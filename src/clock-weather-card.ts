@@ -47,7 +47,7 @@ console.info(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (window as any).customCards.push({
   type: 'clock-weather-card',
-  name: 'Clock Weather Card',
+  name: 'Clock Weather Card Custom',
   description: 'Shows the current date/time in combination with the current weather and an iOS insipired weather forecast.'
 })
 
@@ -163,7 +163,7 @@ export class ClockWeatherCard extends LitElement {
       hasDoubleClick: hasAction(this.config.double_tap_action as ActionConfig | undefined)
     })}
         tabindex="0"
-        .label=${`Clock Weather Card: ${this.config.entity || 'No Entity Defined'}`}
+        .label=${`Clock Weather Card Custom: ${this.config.entity || 'No Entity Defined'}`}
       >
         ${this.config.title
         ? html`

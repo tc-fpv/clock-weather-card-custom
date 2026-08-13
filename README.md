@@ -1,4 +1,4 @@
-# Clock Weather Card
+# Clock Weather Card - Custom
 
 Added Support For Current Wind Speed
 

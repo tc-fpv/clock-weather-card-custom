@@ -52,7 +52,7 @@ export default css`
 
   clock-weather-card-today-right-wrap-bottom {
     display: flex;
-    justify-content: start;
+    justify-content: center;
   }
 
   clock-weather-card-forecast {

@@ -46,7 +46,7 @@ console.info(
 (window as any).customCards = (window as any).customCards || [];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (window as any).customCards.push({
-  type: 'clock-weather-card',
+  type: 'clock-weather-card-custom',
   name: 'Clock Weather Card Custom',
   description: 'Shows the current date/time in combination with the current weather and an iOS insipired weather forecast.'
 })
@@ -60,7 +60,7 @@ const gradientMap: Map<number, Rgb> = new Map()
   .set(30, new Rgb(255, 150, 79)) // orange
   .set(40, new Rgb(255, 192, 159)) // red
 
-@customElement('clock-weather-card')
+@customElement('clock-weather-card-custom')
 export class ClockWeatherCard extends LitElement {
   // https://lit.dev/docs/components/properties/
   @property({ attribute: false }) public hass!: HomeAssistant

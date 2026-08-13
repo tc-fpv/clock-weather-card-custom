@@ -120,6 +120,8 @@ time_zone: null
 show_decimal: false
 apparent_sensor: sensor.real_feel_temperature
 aqi_sensor: sensor.air_quality_index
+wind_speed_sensor: sensor.wind_speed
+wind_direction_sensor: sensor.wind_direction
 ```
 
 ### Options
@@ -149,7 +151,9 @@ aqi_sensor: sensor.air_quality_index
 | time_zone             | string           | **Optional** | Uses the given [time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) to indicate the current date and time. If not provided, uses the time zone configured in HA                                              | `null`    |
 | show_decimal          | boolean          | **Optional** | Displays main temperature without rounding                                                                                                                                                                                        | `false`   |
 | apparent_sensor       | string           | **Optional** | ID of the apparent temperature sensor entity. It is used to show the apparent temperature based on a sensor and will only show it if value is provided.                                                                           | `''`      |
-| aqi_sensor       | string           | **Optional** | ID of the Air Quality Index sensor entity. It is used to show the AQI based on a sensor and will only show it if value is provided.                                                                           | `''`      |
+| aqi_sensor            | string           | **Optional** | ID of the Air Quality Index sensor entity. It is used to show the AQI based on a sensor and will only show it if value is provided.                                                                                               | `''`      |
+| wind_speed_sensor     | string           | **Optional** | ID of the wind speed sensor entity. When configured, appends the wind speed (with unit) to the weather state line, e.g. `Cloudy, 14°, 12 mph NW`.                                                                                 | `''`      |
+| wind_direction_sensor | string           | **Optional** | ID of the wind direction sensor entity. Accepts a numeric bearing (degrees, converted to a 16-point compass abbreviation) or a string abbreviation (e.g. `NW`). Displayed alongside wind speed on the weather state line.         | `''`      |
 
 ## Footnotes
 

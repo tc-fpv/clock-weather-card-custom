@@ -18,6 +18,8 @@ import {
   type TemperatureSensor,
   type TemperatureUnit,
   type HumiditySensor,
+  type WindSpeedSensor,
+  type WindDirectionSensor,
   type Weather,
   WeatherEntityFeature,
   type WeatherForecast,
@@ -224,6 +226,12 @@ export class ClockWeatherCard extends LitElement {
     const localizedApparent = apparentTemp !== null ? this.toConfiguredTempWithUnit(tempUnit, apparentTemp) : null
     const apparentString = this.localize('misc.feels-like')
     const aqiString = this.localize('misc.aqi')
+    const windSpeed = this.getWindSpeed()
+    const windDirection = this.getWindDirection()
+    const windSuffix = [
+      windSpeed !== null ? `${windSpeed.value} ${windSpeed.unit}`.trim() : null,
+      windDirection
+    ].filter(Boolean).join(' ')
 
     return html`
       <clock-weather-card-today-left>
@@ -232,7 +240,10 @@ export class ClockWeatherCard extends LitElement {
       <clock-weather-card-today-right>
         <clock-weather-card-today-right-wrap>
           <clock-weather-card-today-right-wrap-top>
-            ${this.config.hide_clock ? weatherString : localizedTemp ? `${weatherString}, ${localizedTemp}` : weatherString}
+            ${(() => {
+              const base = this.config.hide_clock ? weatherString : localizedTemp ? `${weatherString}, ${localizedTemp}` : weatherString
+              return windSuffix ? `${base}, ${windSuffix}` : base
+            })()}
             ${this.config.show_humidity && localizedHumidity ? html`<br>${localizedHumidity}` : ''}
             ${this.config.apparent_sensor && apparentTemp ? html`<br>${apparentString}: ${localizedApparent}` : ''}
             ${this.config.aqi_sensor && aqi !== null ? html`<br><aqi style="background-color: ${aqiBackgroundColor}; color: ${aqiTextColor};">${aqi} ${aqiString}</aqi>` : ''}
@@ -466,7 +477,9 @@ export class ClockWeatherCard extends LitElement {
       time_zone: config.time_zone ?? undefined,
       show_decimal: config.show_decimal ?? false,
       apparent_sensor: config.apparent_sensor ?? undefined,
-      aqi_sensor: config.aqi_sensor ?? undefined
+      aqi_sensor: config.aqi_sensor ?? undefined,
+      wind_speed_sensor: config.wind_speed_sensor ?? undefined,
+      wind_direction_sensor: config.wind_direction_sensor ?? undefined
     }
   }
 
@@ -531,6 +544,33 @@ export class ClockWeatherCard extends LitElement {
       if (aqi !== undefined && !isNaN(aqi)) {
         return aqi
       }
+    }
+    return null
+  }
+
+  private getWindSpeed (): { value: number; unit: string } | null {
+    if (this.config.wind_speed_sensor) {
+      const sensor = this.hass.states[this.config.wind_speed_sensor] as WindSpeedSensor | undefined
+      const value = sensor?.state ? parseFloat(sensor.state) : undefined
+      if (value !== undefined && !isNaN(value)) {
+        const unit = sensor?.attributes.unit_of_measurement ?? ''
+        return { value, unit }
+      }
+    }
+    return null
+  }
+
+  private getWindDirection (): string | null {
+    if (this.config.wind_direction_sensor) {
+      const sensor = this.hass.states[this.config.wind_direction_sensor] as WindDirectionSensor | undefined
+      const raw = sensor?.state
+      if (!raw || raw === 'unknown' || raw === 'unavailable') return null
+      const bearing = parseFloat(raw)
+      if (!isNaN(bearing)) {
+        const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+        return directions[Math.round(((bearing % 360) + 360) % 360 / 22.5) % 16]
+      }
+      return raw
     }
     return null
   }

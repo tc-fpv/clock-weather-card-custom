@@ -33,6 +33,8 @@ export interface ClockWeatherCardConfig extends LovelaceCardConfig {
   show_decimal?: boolean
   apparent_sensor?: string
   aqi_sensor?: string
+  wind_speed_sensor?: string
+  wind_direction_sensor?: string
 }
 
 export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
@@ -59,6 +61,8 @@ export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
   show_decimal: boolean
   apparent_sensor?: string
   aqi_sensor?: string
+  wind_speed_sensor?: string
+  wind_direction_sensor?: string
 }
 
 export const enum WeatherEntityFeature {
@@ -124,6 +128,17 @@ export interface TemperatureSensor extends HassEntity {
 }
 
 export interface HumiditySensor extends HassEntity {
+  state: string
+}
+
+export interface WindSpeedSensor extends HassEntity {
+  state: string
+  attributes: {
+    unit_of_measurement?: string
+  }
+}
+
+export interface WindDirectionSensor extends HassEntity {
   state: string
 }
 

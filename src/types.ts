@@ -4,7 +4,7 @@ import { type DateTime } from 'luxon'
 
 declare global {
   interface HTMLElementTagNameMap {
-    'clock-weather-card-custom-editor': LovelaceCardEditor
+    'clock-weather-card-editor': LovelaceCardEditor
     'hui-error-card': LovelaceCard
   }
 }

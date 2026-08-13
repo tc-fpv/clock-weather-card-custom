@@ -554,7 +554,7 @@ export class ClockWeatherCard extends LitElement {
       const value = sensor?.state ? parseFloat(sensor.state) : undefined
       if (value !== undefined && !isNaN(value)) {
         const unit = sensor?.attributes.unit_of_measurement ?? ''
-        return { value, unit }
+        return { value: Math.round(value * 10) / 10, unit }
       }
     }
     return null

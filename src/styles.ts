@@ -41,6 +41,12 @@ export default css`
     display: block;
   }
 
+  clock-weather-card-today-rain-rate {
+    width: 100%;
+    text-align: center;
+    display: block;
+  }
+
   clock-weather-card-today-right-wrap-center {
     display: flex;
     height: 4rem;

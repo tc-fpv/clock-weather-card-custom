@@ -35,6 +35,7 @@ export interface ClockWeatherCardConfig extends LovelaceCardConfig {
   aqi_sensor?: string
   wind_speed_sensor?: string
   wind_direction_sensor?: string
+  rain_rate_sensor?: string
 }
 
 export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
@@ -63,6 +64,7 @@ export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
   aqi_sensor?: string
   wind_speed_sensor?: string
   wind_direction_sensor?: string
+  rain_rate_sensor?: string
 }
 
 export const enum WeatherEntityFeature {

@@ -232,6 +232,7 @@ export class ClockWeatherCard extends LitElement {
       windSpeed !== null ? `${windSpeed.value} ${windSpeed.unit}`.trim() : null,
       windDirection
     ].filter(Boolean).join(' ')
+    const rainRate = this.getRainRate()
 
     return html`
       <clock-weather-card-today-left>
@@ -248,6 +249,7 @@ export class ClockWeatherCard extends LitElement {
             ${this.config.apparent_sensor && apparentTemp ? html`<br>${apparentString}: ${localizedApparent}` : ''}
             ${this.config.aqi_sensor && aqi !== null ? html`<br><aqi style="background-color: ${aqiBackgroundColor}; color: ${aqiTextColor};">${aqi} ${aqiString}</aqi>` : ''}
           </clock-weather-card-today-right-wrap-top>
+          ${rainRate !== null ? html`<clock-weather-card-today-rain-rate>Rain: ${rainRate} mm/h</clock-weather-card-today-rain-rate>` : ''}
           <clock-weather-card-today-right-wrap-center>
             ${this.config.hide_clock ? localizedTemp ?? 'n/a' : this.time()}
           </clock-weather-card-today-right-wrap-center>
@@ -479,7 +481,8 @@ export class ClockWeatherCard extends LitElement {
       apparent_sensor: config.apparent_sensor ?? undefined,
       aqi_sensor: config.aqi_sensor ?? undefined,
       wind_speed_sensor: config.wind_speed_sensor ?? undefined,
-      wind_direction_sensor: config.wind_direction_sensor ?? undefined
+      wind_direction_sensor: config.wind_direction_sensor ?? undefined,
+      rain_rate_sensor: config.rain_rate_sensor ?? undefined
     }
   }
 
@@ -571,6 +574,17 @@ export class ClockWeatherCard extends LitElement {
         return directions[Math.round(((bearing % 360) + 360) % 360 / 22.5) % 16]
       }
       return raw
+    }
+    return null
+  }
+
+  private getRainRate (): number | null {
+    if (this.config.rain_rate_sensor) {
+      const sensor = this.hass.states[this.config.rain_rate_sensor] as HumiditySensor | undefined
+      const value = sensor?.state ? parseFloat(sensor.state) : undefined
+      if (value !== undefined && !isNaN(value) && value > 0) {
+        return Math.round(value * 10) / 10
+      }
     }
     return null
   }

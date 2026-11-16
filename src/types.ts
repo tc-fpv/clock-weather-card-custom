@@ -1,4 +1,4 @@
-import { type LovelaceCard, type LovelaceCardConfig, type LovelaceCardEditor } from 'custom-card-helpers'
+import { type ActionConfig, type LovelaceCard, type LovelaceCardConfig, type LovelaceCardEditor } from 'custom-card-helpers'
 import { type HassEntity } from 'home-assistant-js-websocket/dist/types.js'
 import { type DateTime } from 'luxon'
 
@@ -39,6 +39,9 @@ export interface ClockWeatherCardConfig extends LovelaceCardConfig {
   warning_sensor?: string
   warning_dismiss_entity?: string
   warning_areas?: string[]
+  earthquake_entity?: string
+  earthquake_dismiss_entity?: string
+  earthquake_tap_action?: ActionConfig
 }
 
 export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
@@ -71,6 +74,9 @@ export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
   warning_sensor?: string
   warning_dismiss_entity?: string
   warning_areas: string[]
+  earthquake_entity?: string
+  earthquake_dismiss_entity?: string
+  earthquake_tap_action?: ActionConfig
 }
 
 export interface MetOfficeWarningEntry {

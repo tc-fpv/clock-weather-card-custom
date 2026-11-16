@@ -21,6 +21,21 @@ export default css`
     height: auto;
   }
 
+  clock-weather-card-earthquake-icon {
+    display: inline-block;
+    width: 1.3em;
+    height: 1.3em;
+    margin-left: 0.4em;
+    vertical-align: middle;
+    cursor: pointer;
+  }
+
+  clock-weather-card-earthquake-icon svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
   clock-weather-card-today {
     display: flex;
   }

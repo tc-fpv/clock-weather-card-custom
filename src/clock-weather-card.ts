@@ -136,7 +136,12 @@ export class ClockWeatherCard extends LitElement {
       if (oldSun !== newSun) {
         return true
       }
-      for (const id of [this.config.warning_sensor, this.config.warning_dismiss_entity]) {
+      for (const id of [
+        this.config.warning_sensor,
+        this.config.warning_dismiss_entity,
+        this.config.earthquake_entity,
+        this.config.earthquake_dismiss_entity
+      ]) {
         if (id && oldHass.states[id] !== this.hass.states[id]) {
           return true
         }
@@ -240,6 +245,40 @@ export class ClockWeatherCard extends LitElement {
       </clock-weather-card-warning-icon>`
   }
 
+  private isEarthquakeActive (): boolean {
+    const entityId = this.config.earthquake_entity
+    if (!entityId) return false
+    if (this.hass.states[entityId]?.state !== 'on') return false
+    const dismissId = this.config.earthquake_dismiss_entity
+    return !(dismissId && this.hass.states[dismissId]?.state === 'on')
+  }
+
+  private renderEarthquakeIcon (): TemplateResult {
+    const stop = (e: Event): void => { e.stopPropagation() }
+    const tap = (e: Event): void => {
+      e.stopPropagation()
+      const dismissEntity = this.config.earthquake_dismiss_entity
+      if (dismissEntity) {
+        void this.hass.callService('input_boolean', 'turn_on', { entity_id: dismissEntity })
+      }
+      const action = this.config.earthquake_tap_action
+      if (action) {
+        handleAction(this, this.hass, { tap_action: action }, 'tap')
+      }
+    }
+    return html`<clock-weather-card-earthquake-icon
+        @click=${tap}
+        @mousedown=${stop}
+        @touchstart=${stop}
+        @touchend=${stop}
+        @touchcancel=${stop}
+        @keyup=${stop}
+      ><svg viewBox="0 0 24 24" aria-label="Earthquake detected - tap to dismiss">
+          <rect x="1" y="1" width="22" height="22" rx="5" fill="#FF6D00" />
+          <polyline points="2,13 7,13 9,6 12,19 15,8 17,13 22,13" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg></clock-weather-card-earthquake-icon>`
+  }
+
   private getWarning (): { label: string, color: string, extra: number } | null {
     const sensorId = this.config.warning_sensor
     if (!sensorId) return null
@@ -320,7 +359,7 @@ export class ClockWeatherCard extends LitElement {
             ${warningText !== null ? warningText : (() => {
               const base = this.config.hide_clock ? weatherString : localizedTemp ? `${weatherString}, ${localizedTemp}` : weatherString
               return windSuffix ? `${base}, ${windSuffix}` : base
-            })()}
+            })()}${this.isEarthquakeActive() ? this.renderEarthquakeIcon() : ''}
             ${this.config.show_humidity && localizedHumidity ? html`<br>${localizedHumidity}` : ''}
             ${this.config.apparent_sensor && apparentTemp ? html`<br>${apparentString}: ${localizedApparent}` : ''}
             ${this.config.aqi_sensor && aqi !== null ? html`<br><aqi style="background-color: ${aqiBackgroundColor}; color: ${aqiTextColor};">${aqi} ${aqiString}</aqi>` : ''}
@@ -561,7 +600,10 @@ export class ClockWeatherCard extends LitElement {
       rain_rate_sensor: config.rain_rate_sensor ?? undefined,
       warning_sensor: config.warning_sensor ?? undefined,
       warning_dismiss_entity: config.warning_dismiss_entity ?? undefined,
-      warning_areas: config.warning_areas ?? []
+      warning_areas: config.warning_areas ?? [],
+      earthquake_entity: config.earthquake_entity ?? undefined,
+      earthquake_dismiss_entity: config.earthquake_dismiss_entity ?? undefined,
+      earthquake_tap_action: config.earthquake_tap_action ?? undefined
     }
   }
 

@@ -17,6 +17,7 @@ Credits go to [basmilius](https://github.com/basmilius) for the awesome [weather
 * **Wind:** `wind_speed_sensor` and `wind_direction_sensor` add the current wind speed and compass direction to the weather line.
 * **Rain rate:** `rain_rate_sensor` shows `Rain: x mm/h` in the today section, only while the rate is above zero.
 * **Met Office weather warnings:** see [Weather warnings](#weather-warnings).
+* **Earthquake indicator:** see [Earthquake indicator](#earthquake-indicator).
 * The card type is `custom:clock-weather-card-custom`, so it can sit alongside the original card.
 
 ## Weather warnings
@@ -68,6 +69,36 @@ warning_sensor: sensor.met_office_warnings_nw
 warning_areas:
   - Blackpool
 warning_dismiss_entity: input_boolean.weather_alert_dismissed
+```
+
+## Earthquake indicator
+
+The card can show a small earthquake symbol (an orange square with a seismograph line) at the end of the weather text line.
+It also shows while a weather warning has replaced that line. The card only displays an entity; Home Assistant decides when an earthquake counts.
+
+* `earthquake_entity` is a binary sensor. The symbol shows while it is `on`.
+* Tapping the symbol turns on `earthquake_dismiss_entity` (an `input_boolean`), which hides it, then runs `earthquake_tap_action`.
+* `earthquake_tap_action` uses Home Assistant's standard action format, for example `navigate` to a dashboard view.
+
+### Suggested Home Assistant setup (UK)
+
+1. Add the [BGS recent UK earthquakes feed](https://quakes.bgs.ac.uk/feeds/MhSeismology.xml) with the [feedparser](https://github.com/custom-components/feedparser) integration
+   (it covers roughly the last 50 days, so a refresh every few hours is plenty).
+2. Create two `input_number` helpers for the radius in km and the minimum magnitude, so they can be changed from a dashboard.
+3. Create a template binary sensor that is `on` while any feed entry is within the radius of your home zone, at or above the minimum magnitude and under 48 hours old.
+   Entries have `geo_lat`, `geo_long`, `published` and a `summary` ending in `Magnitude: x.x`.
+4. Create an `input_boolean` for dismissal, and an automation that turns it off when the binary sensor changes from `off` to `on`.
+
+### Example
+
+```yaml
+type: custom:clock-weather-card-custom
+entity: weather.home
+earthquake_entity: binary_sensor.earthquake_nearby
+earthquake_dismiss_entity: input_boolean.earthquake_dismissed
+earthquake_tap_action:
+  action: navigate
+  navigation_path: /weather-station/earthquakes
 ```
 
 ## FAQ
@@ -167,6 +198,11 @@ warning_sensor: sensor.met_office_warnings_nw
 warning_areas:
   - Blackpool
 warning_dismiss_entity: input_boolean.weather_alert_dismissed
+earthquake_entity: binary_sensor.earthquake_nearby
+earthquake_dismiss_entity: input_boolean.earthquake_dismissed
+earthquake_tap_action:
+  action: navigate
+  navigation_path: /weather-station/earthquakes
 ```
 
 ### Options
@@ -203,6 +239,9 @@ warning_dismiss_entity: input_boolean.weather_alert_dismissed
 | warning_sensor        | string           | **Optional** | ID of a [feedparser](https://github.com/custom-components/feedparser) sensor tracking a Met Office warnings RSS feed. When it has matching entries, the weather icon and text line are replaced by the highest severity warning. See [Weather warnings](#weather-warnings). | `''`      |
 | warning_areas         | string[]         | **Optional** | Only warnings whose title or summary mention one of these names (case-insensitive, e.g. `Blackpool`) are shown. The feed lists counties and unitary authorities, not towns. If empty, all entries are shown.                      | `[]`      |
 | warning_dismiss_entity | string          | **Optional** | ID of an `input_boolean`. Tapping the warning icon turns it on and hides the warning while it is on. Reset it with an automation when the feed sensor changes so the next warning is shown.                                       | `''`      |
+| earthquake_entity     | string           | **Optional** | ID of a binary sensor. While it is `on` (and not dismissed) an earthquake symbol is shown after the weather text. See [Earthquake indicator](#earthquake-indicator).                                                           | `''`      |
+| earthquake_dismiss_entity | string       | **Optional** | ID of an `input_boolean`. Tapping the earthquake symbol turns it on and hides the symbol while it is on. Reset it with an automation when the binary sensor turns on again.                                                     | `''`      |
+| earthquake_tap_action | action           | **Optional** | Home Assistant action run when the earthquake symbol is tapped, e.g. `action: navigate` with `navigation_path`.                                                                                                                  | none      |
 
 ## Footnotes
 

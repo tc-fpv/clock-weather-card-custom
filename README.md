@@ -125,6 +125,10 @@ entity: sensor.bgs_uk_earthquakes
 | latitude    | number | **Optional** | Starting map centre latitude.                                          | home zone   |
 | longitude   | number | **Optional** | Starting map centre longitude.                                         | home zone   |
 | zoom        | number | **Optional** | Starting zoom (about 5 = UK, 8 = region, 12 = town).                   | `8`         |
+| radius_entity | string | **Optional** | Numeric entity (km) drawn as a dashed alert-radius ring around home.  | `input_number.earthquake_radius_km` |
+| show_radius | boolean | **Optional** | Draw the radius ring.                                                  | `true`      |
+| time_range  | string | **Optional** | Initial time filter: `24h`, `7d`, `30d` or `all`. The list header buttons change it. | `all` |
+| show_radar  | boolean | **Optional** | Rain radar (RainViewer) on at start. It can always be toggled on the map. | `false`   |
 
 ## FAQ
 

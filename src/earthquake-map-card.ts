@@ -13,7 +13,22 @@ export interface EarthquakeMapCardConfig {
   latitude?: number
   longitude?: number
   zoom?: number
+  radius_entity?: string
+  show_radius?: boolean
+  time_range?: TimeRange
+  show_radar?: boolean
 }
+
+type TimeRange = '24h' | '7d' | '30d' | 'all'
+
+const RANGES: Array<{ id: TimeRange, label: string, ms: number }> = [
+  { id: '24h', label: '24h', ms: 24 * 3600000 },
+  { id: '7d', label: '7d', ms: 7 * 24 * 3600000 },
+  { id: '30d', label: '30d', ms: 30 * 24 * 3600000 },
+  { id: 'all', label: 'All', ms: Infinity }
+]
+
+const RADAR_API = 'https://api.rainviewer.com/public/weather-maps.json'
 
 interface Quake {
   id: string
@@ -71,12 +86,16 @@ export class EarthquakeMapCard extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant
   @state() private config?: EarthquakeMapCardConfig
   @state() private selectedId: string | null = null
+  @state() private range: TimeRange = 'all'
 
   private map?: L.Map
   private markerLayer?: L.LayerGroup
   private markers = new Map<string, L.CircleMarker>()
   private resizeObserver?: ResizeObserver
   private lastEntries?: unknown
+  private radiusLayer?: L.Circle
+  private radarLayer?: L.TileLayer
+  private radarTimer?: number
 
   static styles = [
     leafletCss,
@@ -104,6 +123,31 @@ export class EarthquakeMapCard extends LitElement {
       .list {
         overflow-y: auto;
         height: 100%;
+      }
+      .filters {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        gap: 6px;
+        padding: 8px 12px;
+        background: var(--card-background-color, #fff);
+        border-bottom: 1px solid var(--divider-color);
+      }
+      .filters button {
+        flex: 1;
+        padding: 4px 0;
+        cursor: pointer;
+        border: 1px solid var(--divider-color);
+        border-radius: 14px;
+        background: transparent;
+        color: var(--primary-text-color);
+        font: inherit;
+      }
+      .filters button.active {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+        border-color: var(--primary-color);
       }
       .row {
         display: flex;
@@ -147,6 +191,7 @@ export class EarthquakeMapCard extends LitElement {
       throw new Error('You need to define an entity (the BGS earthquake feed sensor)')
     }
     this.config = config
+    this.range = config.time_range ?? 'all'
   }
 
   public getCardSize (): number {
@@ -157,16 +202,23 @@ export class EarthquakeMapCard extends LitElement {
     return { entity: 'sensor.bgs_uk_earthquakes' }
   }
 
+  private getHome (): [number, number] | null {
+    const zone = this.hass?.states[this.config?.home_entity ?? 'zone.home']
+    const lat = Number(zone?.attributes?.latitude ?? this.hass?.config?.latitude)
+    const lon = Number(zone?.attributes?.longitude ?? this.hass?.config?.longitude)
+    return Number.isFinite(lat) && Number.isFinite(lon) ? [lat, lon] : null
+  }
+
   private getQuakes (): Quake[] {
     const entityId = this.config?.entity
     if (!entityId || !this.hass) return []
     const entries = this.hass.states[entityId]?.attributes?.entries as Array<Record<string, string>> | undefined
     if (!Array.isArray(entries)) return []
 
-    const zone = this.hass.states[this.config?.home_entity ?? 'zone.home']
-    const homeLat = Number(zone?.attributes?.latitude ?? this.hass.config?.latitude)
-    const homeLon = Number(zone?.attributes?.longitude ?? this.hass.config?.longitude)
-    const haveHome = Number.isFinite(homeLat) && Number.isFinite(homeLon)
+    const home = this.getHome()
+    const haveHome = home !== null
+    const [homeLat, homeLon] = home ?? [0, 0]
+    const cutoff = Date.now() - (RANGES.find(r => r.id === this.range)?.ms ?? Infinity)
 
     const quakes: Quake[] = []
     for (const e of entries) {
@@ -179,6 +231,7 @@ export class EarthquakeMapCard extends LitElement {
       const depth = /Depth:\s*([^;]+);/.exec(summary)?.[1]?.trim() ?? ''
       // BGS publishes times without a zone; they are UTC
       const time = Date.parse(`${e.published ?? ''} GMT`)
+      if (Number.isFinite(time) && time < cutoff) continue
       quakes.push({
         id: e.link ?? `${lat},${lon},${e.published}`,
         place: toTitleCase(place.replace(/\s*,\s*/g, ', ')),
@@ -203,8 +256,11 @@ export class EarthquakeMapCard extends LitElement {
         <div class="layout" style=${heightStyle}>
           <div class="map"></div>
           <div class="list">
+            <div class="filters">
+              ${RANGES.map(r => html`<button class=${r.id === this.range ? 'active' : ''} @click=${() => { this.range = r.id }}>${r.label}</button>`)}
+            </div>
             ${quakes.length === 0
-              ? html`<div class="empty">No earthquakes in the feed.</div>`
+              ? html`<div class="empty">No earthquakes in this period.</div>`
               : quakes.map(q => html`
                 <div class="row ${q.id === this.selectedId ? 'selected' : ''}" data-id=${q.id} @click=${() => { this.select(q.id, true) }}>
                   <div class="badge" style="background: ${magnitudeColor(q.magnitude)}">${q.magnitude.toFixed(1)}</div>
@@ -227,16 +283,21 @@ export class EarthquakeMapCard extends LitElement {
       this.initMap()
     }
     const entries = this.hass?.states[this.config.entity]?.attributes?.entries
-    if (this.map && (entries !== this.lastEntries || changedProps.has('config'))) {
+    if (this.map && (entries !== this.lastEntries || changedProps.has('config') || changedProps.has('range'))) {
       this.lastEntries = entries
       this.drawMarkers()
     }
+    this.updateRadius()
   }
 
   public disconnectedCallback (): void {
     super.disconnectedCallback()
     this.resizeObserver?.disconnect()
     this.resizeObserver = undefined
+    window.clearInterval(this.radarTimer)
+    this.radarTimer = undefined
+    this.radarLayer = undefined
+    this.radiusLayer = undefined
     this.map?.remove()
     this.map = undefined
     this.markerLayer = undefined
@@ -247,17 +308,58 @@ export class EarthquakeMapCard extends LitElement {
   private initMap (): void {
     const container = this.renderRoot.querySelector<HTMLElement>('.map')
     if (!container) return
-    const zone = this.hass?.states[this.config?.home_entity ?? 'zone.home']
-    const homeLat = Number(zone?.attributes?.latitude ?? this.hass?.config?.latitude)
-    const homeLon = Number(zone?.attributes?.longitude ?? this.hass?.config?.longitude)
-    const lat = this.config?.latitude ?? (Number.isFinite(homeLat) ? homeLat : 54.5)
-    const lon = this.config?.longitude ?? (Number.isFinite(homeLon) ? homeLon : -3)
+    const home = this.getHome()
+    const lat = this.config?.latitude ?? home?.[0] ?? 54.5
+    const lon = this.config?.longitude ?? home?.[1] ?? -3
     this.map = L.map(container, { zoomSnap: 0.5, worldCopyJump: true }).setView([lat, lon], this.config?.zoom ?? 8)
     L.tileLayer(SATELLITE_URL, { maxZoom: 18, attribution: ATTRIBUTION }).addTo(this.map)
     L.tileLayer(LABELS_URL, { maxZoom: 18 }).addTo(this.map)
     this.markerLayer = L.layerGroup().addTo(this.map)
     this.resizeObserver = new ResizeObserver(() => { this.map?.invalidateSize() })
     this.resizeObserver.observe(container)
+    void this.initRadar()
+  }
+
+  private async fetchRadarUrl (): Promise<string | null> {
+    try {
+      const res = await fetch(RADAR_API)
+      const data = await res.json() as { host: string, radar: { past: Array<{ path: string }> } }
+      const latest = data.radar.past[data.radar.past.length - 1]
+      return latest ? `${data.host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png` : null
+    } catch {
+      return null
+    }
+  }
+
+  private async initRadar (): Promise<void> {
+    const map = this.map
+    const url = await this.fetchRadarUrl()
+    if (!url || !map || map !== this.map) return
+    this.radarLayer = L.tileLayer(url, { opacity: 0.6, maxZoom: 18, attribution: 'Radar: RainViewer' })
+    if (this.config?.show_radar) this.radarLayer.addTo(map)
+    L.control.layers({}, { 'Rain radar': this.radarLayer }, { collapsed: false, position: 'topright' }).addTo(map)
+    // Radar frames update about every 10 minutes
+    this.radarTimer = window.setInterval(() => {
+      void this.fetchRadarUrl().then(u => { if (u) this.radarLayer?.setUrl(u) })
+    }, 600000)
+  }
+
+  private updateRadius (): void {
+    if (!this.map || this.config?.show_radius === false) return
+    const entityId = this.config?.radius_entity ?? 'input_number.earthquake_radius_km'
+    const km = Number(this.hass?.states[entityId]?.state)
+    const home = this.getHome()
+    if (!Number.isFinite(km) || km <= 0 || !home) {
+      this.radiusLayer?.remove()
+      this.radiusLayer = undefined
+      return
+    }
+    if (!this.radiusLayer) {
+      this.radiusLayer = L.circle(home, { radius: km * 1000, color: '#FFFFFF', weight: 2, dashArray: '8 6', fill: false, interactive: false }).addTo(this.map)
+    } else {
+      this.radiusLayer.setLatLng(home)
+      this.radiusLayer.setRadius(km * 1000)
+    }
   }
 
   private drawMarkers (): void {

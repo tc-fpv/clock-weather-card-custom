@@ -70,12 +70,6 @@ warning_areas:
 warning_dismiss_entity: input_boolean.weather_alert_dismissed
 ```
 
-## Migrating from v1 to v2
-
-* Configuration property `forecast_days` was renamed to `forecast_rows` to indicate that this attribute does not only work for daily, but also for hourly forecasts.
-* `date-fns` has been replaced by `luxon` for date/time formatting. If you configure `date_pattern`, make sure to migrate your pattern to comply with [luxon](https://moment.github.io/luxon/#/formatting?id=table-of-tokens). Additionally, the weekday is now [_not_ hardcoded](https://github.com/pkissling/clock-weather-card/issues/89) anymore.
-* Configuration property `use_browser_time` is now by default `false`, so by default the card will show the time of the current HA time zone.
-
 ## FAQ
 
 * [Why don't I see the current day in my weather forecast?](#why-dont-i-see-the-current-day-in-my-weather-forecast)

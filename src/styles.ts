@@ -10,6 +10,7 @@ export default css`
   clock-weather-card-warning {
     display: block;
     padding: 12px;
+    border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0;
     text-align: center;
     font-size: 18px;
     font-weight: bold;

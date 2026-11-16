@@ -10,6 +10,9 @@ export interface EarthquakeMapCardConfig {
   home_entity?: string
   height?: number
   title?: string
+  latitude?: number
+  longitude?: number
+  zoom?: number
 }
 
 interface Quake {
@@ -74,21 +77,20 @@ export class EarthquakeMapCard extends LitElement {
   private markers = new Map<string, L.CircleMarker>()
   private resizeObserver?: ResizeObserver
   private lastEntries?: unknown
-  private fitted = false
 
   static styles = [
     leafletCss,
     css`
       ha-card {
         overflow: hidden;
-        height: 100%;
+        container-type: inline-size;
       }
       .layout {
         display: grid;
         grid-template-columns: 2fr 1fr;
-        height: var(--eq-height, 500px);
+        height: var(--eq-height, max(420px, calc(100vh - 160px)));
       }
-      @media (max-width: 700px) {
+      @container (max-width: 700px) {
         .layout {
           grid-template-columns: 1fr;
           grid-template-rows: 1fr 1fr;
@@ -195,10 +197,10 @@ export class EarthquakeMapCard extends LitElement {
   protected render (): TemplateResult {
     if (!this.config) return html``
     const quakes = this.getQuakes()
-    const height = this.config.height ?? 500
+    const heightStyle = this.config.height !== undefined ? `--eq-height: ${this.config.height}px` : ''
     return html`
       <ha-card .header=${this.config.title ?? ''}>
-        <div class="layout" style="--eq-height: ${height}px">
+        <div class="layout" style=${heightStyle}>
           <div class="map"></div>
           <div class="list">
             ${quakes.length === 0
@@ -240,13 +242,17 @@ export class EarthquakeMapCard extends LitElement {
     this.markerLayer = undefined
     this.markers.clear()
     this.lastEntries = undefined
-    this.fitted = false
   }
 
   private initMap (): void {
     const container = this.renderRoot.querySelector<HTMLElement>('.map')
     if (!container) return
-    this.map = L.map(container, { zoomSnap: 0.5, worldCopyJump: true }).setView([54.5, -3], 5)
+    const zone = this.hass?.states[this.config?.home_entity ?? 'zone.home']
+    const homeLat = Number(zone?.attributes?.latitude ?? this.hass?.config?.latitude)
+    const homeLon = Number(zone?.attributes?.longitude ?? this.hass?.config?.longitude)
+    const lat = this.config?.latitude ?? (Number.isFinite(homeLat) ? homeLat : 54.5)
+    const lon = this.config?.longitude ?? (Number.isFinite(homeLon) ? homeLon : -3)
+    this.map = L.map(container, { zoomSnap: 0.5, worldCopyJump: true }).setView([lat, lon], this.config?.zoom ?? 8)
     L.tileLayer(SATELLITE_URL, { maxZoom: 18, attribution: ATTRIBUTION }).addTo(this.map)
     L.tileLayer(LABELS_URL, { maxZoom: 18 }).addTo(this.map)
     this.markerLayer = L.layerGroup().addTo(this.map)
@@ -272,11 +278,6 @@ export class EarthquakeMapCard extends LitElement {
       marker.on('click', () => { this.select(q.id, false) })
       marker.addTo(this.markerLayer)
       this.markers.set(q.id, marker)
-    }
-
-    if (!this.fitted && quakes.length > 0) {
-      this.fitted = true
-      this.map.fitBounds(L.latLngBounds(quakes.map(q => [q.lat, q.lon] as [number, number])), { padding: [30, 30], maxZoom: 9 })
     }
   }
 

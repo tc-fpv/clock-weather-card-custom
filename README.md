@@ -120,8 +120,11 @@ entity: sensor.bgs_uk_earthquakes
 |-------------|--------|--------------|------------------------------------------------------------------------|-------------|
 | entity      | string | **Required** | feedparser sensor for the BGS feed (`geo_lat`, `geo_long`, `summary`). |             |
 | home_entity | string | **Optional** | Zone used for the "km from home" distances.                            | `zone.home` |
-| height      | number | **Optional** | Card height in pixels (the list stacks under the map on narrow screens). | `500`     |
+| height      | number | **Optional** | Card height in pixels (the list stacks under the map on narrow cards). | fills screen height (min 420) |
 | title       | string | **Optional** | Card title.                                                            | none        |
+| latitude    | number | **Optional** | Starting map centre latitude.                                          | home zone   |
+| longitude   | number | **Optional** | Starting map centre longitude.                                         | home zone   |
+| zoom        | number | **Optional** | Starting zoom (about 5 = UK, 8 = region, 12 = town).                   | `8`         |
 
 ## FAQ
 

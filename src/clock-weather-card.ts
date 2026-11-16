@@ -35,6 +35,7 @@ import { animatedIcons, staticIcons } from './images'
 import { version } from '../package.json'
 import { safeRender } from './helpers'
 import { DateTime } from 'luxon'
+import './earthquake-map-card'
 
 console.info(
   `%c  CLOCK-WEATHER-CARD \n%c Version: ${version}`,

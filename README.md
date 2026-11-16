@@ -101,6 +101,28 @@ earthquake_tap_action:
   navigation_path: /weather-station/earthquakes
 ```
 
+## Earthquake map card
+
+The same bundle also provides `custom:earthquake-map-card`: a satellite map with a list beside it, showing every earthquake in a BGS feedparser sensor.
+No extra dashboard resource is needed.
+
+* Satellite imagery and place labels come from Esri World Imagery (attribution is shown on the map). The map pans and zooms.
+* Each earthquake is a circle sized and coloured by magnitude. The list is newest first with magnitude, place, age, distance from home and depth.
+* Clicking a list row flies the map to that earthquake and opens its popup. Clicking a marker highlights its row.
+* It shows everything in the feed. It does not use any radius or magnitude filter.
+
+```yaml
+type: custom:earthquake-map-card
+entity: sensor.bgs_uk_earthquakes
+```
+
+| Option      | Type   | Requirement  | Description                                                            | Default     |
+|-------------|--------|--------------|------------------------------------------------------------------------|-------------|
+| entity      | string | **Required** | feedparser sensor for the BGS feed (`geo_lat`, `geo_long`, `summary`). |             |
+| home_entity | string | **Optional** | Zone used for the "km from home" distances.                            | `zone.home` |
+| height      | number | **Optional** | Card height in pixels (the list stacks under the map on narrow screens). | `500`     |
+| title       | string | **Optional** | Card title.                                                            | none        |
+
 ## FAQ
 
 * [Why don't I see the current day in my weather forecast?](#why-dont-i-see-the-current-day-in-my-weather-forecast)

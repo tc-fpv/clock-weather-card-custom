@@ -1,19 +1,74 @@
 # Clock Weather Card - Custom
 
-Added Support For Current Wind Speed
+A custom fork of [pkissling/clock-weather-card](https://github.com/pkissling/clock-weather-card).
 
-[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
-[![Total downloads](https://img.shields.io/github/downloads/pkissling/clock-weather-card/total)](https://github.com/pkissling/clock-weather-card/releases)
-[![Downloads of latest version (latest by SemVer)](https://img.shields.io/github/downloads/pkissling/clock-weather-card/latest/total?sort=semver)](https://github.com/pkissling/clock-weather-card/releases/latest)
-[![Current version](https://img.shields.io/github/v/release/pkissling/clock-weather-card)](https://github.com/pkissling/clock-weather-card/releases/latest)
+[![Current version](https://img.shields.io/github/v/release/tc-fpv/clock-weather-card-custom)](https://github.com/tc-fpv/clock-weather-card-custom/releases/latest)
 
-A [Home Assistant Dashboard Card](https://www.home-assistant.io/dashboards/) available through the [Home Assistant Community Store](https://hacs.xyz)
-showing the current date, time and a weather forecast.
+A [Home Assistant Dashboard Card](https://www.home-assistant.io/dashboards/) showing the current date, time and a weather forecast.
+It can be installed as a custom repository through HACS / the Home Assistant Marketplace.
 
 ![Clock Weather Card](.github/assets/card.gif)
 [^1]
 
 Credits go to [basmilius](https://github.com/basmilius) for the awesome [weather icons](https://github.com/basmilius/weather-icons).
+
+## Additions in this fork
+
+* **Wind:** `wind_speed_sensor` and `wind_direction_sensor` add the current wind speed and compass direction to the weather line.
+* **Rain rate:** `rain_rate_sensor` shows `Rain: x mm/h` in the today section, only while the rate is above zero.
+* **Met Office weather warnings:** see [Weather warnings](#weather-warnings).
+* The card type is `custom:clock-weather-card-custom`, so it can sit alongside the original card.
+
+## Weather warnings
+
+The card can show [Met Office weather warnings](https://www.metoffice.gov.uk/weather/warnings-and-advice/uk-warnings) without changing the size of the card.
+It reads a [feedparser](https://github.com/custom-components/feedparser) sensor that tracks a Met Office warnings RSS feed
+(for example `https://www.metoffice.gov.uk/public/data/PWSCache/WarningsRSS/Region/nw`), using the sensor's `entries` attribute.
+
+While a warning is active:
+
+* The weather icon is replaced by a warning triangle coloured by severity: yellow, amber or red.
+* The weather, temperature and wind text line is replaced by the warning, for example `Yellow Warning - Snow`.
+  If several warnings match, the highest severity is shown with a count of the others, for example `Amber Warning - Wind (+1)`.
+* Tapping the triangle dismisses the warning (see `warning_dismiss_entity`). The normal weather icon and text return.
+* The clock, date, forecast and any humidity, feels-like, AQI and rain rate lines are unchanged.
+
+Severity and type are read from the warning's image name (for example `yellow-snow.png`). Every entry the feed returns is treated as active; validity times are not parsed.
+
+### Choosing `warning_areas`
+
+The Met Office lists affected areas by local authority (county or unitary authority), not by town.
+An area is listed if the warning touches any part of it, so a warning that lists a county may not reach every part of that county.
+Unitary authorities such as Blackpool are listed separately from the county they sit in (Lancashire),
+so `warning_areas: [Lancashire]` can match warnings that do not reach Blackpool.
+Use the area name closest to you. Matching is a case-insensitive text match against the warning title and summary.
+
+### Resetting a dismissed warning
+
+Create an `input_boolean` helper and set it as `warning_dismiss_entity`. Tapping the icon turns it on, which hides the warning.
+Add an automation that turns it off when the feed sensor changes, so the next new warning is shown:
+
+```yaml
+alias: Reset weather warning dismissal
+triggers:
+  - trigger: state
+    entity_id: sensor.met_office_warnings_nw
+actions:
+  - action: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.weather_alert_dismissed
+```
+
+### Example
+
+```yaml
+type: custom:clock-weather-card-custom
+entity: weather.home
+warning_sensor: sensor.met_office_warnings_nw
+warning_areas:
+  - Blackpool
+warning_dismiss_entity: input_boolean.weather_alert_dismissed
+```
 
 ## Migrating from v1 to v2
 
@@ -48,7 +103,7 @@ The basic idea of the forecast bars is to be able to understand the weather tren
 
 ### Manual Installation
 
-1. Download the [clock-weather-card](https://www.github.com/pkissling/clock-weather-card/releases/latest/download/clock-weather-card.js).
+1. Download the [clock-weather-card.js](https://github.com/tc-fpv/clock-weather-card-custom/releases/latest/download/clock-weather-card.js) from the latest release.
 2. Place the file in your Home Assistant's `config/www` folder.
 3. Add the configuration to your `ui-lovelace.yaml`.
 
@@ -60,28 +115,19 @@ The basic idea of the forecast bars is to be able to understand the weather tren
 
 4. Add [configuration](#configuration) for the card in your `ui-lovelace.yaml`.
 
-### Installation and tracking with `hacs`
+### Installation and tracking with HACS / Marketplace
 
-1. Make sure the [HACS](https://github.com/custom-components/hacs) component is installed and working.
-2. Search for `clock-weather-card` in HACS and install it.
-3. Depening on whether you manage your Lovelace resources via YAML (3i) or UI (3ii), you have to add the corresponding resources.
-   1. **YAML:** Add the configuration to your `ui-lovelace.yaml`.
+1. Make sure [HACS](https://github.com/custom-components/hacs) (or, on Home Assistant 2026.11 and later, the built-in Marketplace) is installed and working.
+2. Add `https://github.com/tc-fpv/clock-weather-card-custom` as a custom repository of type **Dashboard** (HACS) or via **Add from link** (Marketplace), then install **Clock Weather Card Custom**.
+3. HACS and the Marketplace register the Lovelace resource for you when installing. If you manage resources in YAML, add it yourself:
 
-      ```yaml
-      resources:
-        - url: /hacsfiles/clock-weather-card/clock-weather-card.js
-          type: module
-      ```
+   ```yaml
+   resources:
+     - url: /hacsfiles/clock-weather-card-custom/clock-weather-card.js
+       type: module
+   ```
 
-   2. **UI:** Add Lovelace resource [![My Home Assistant](https://my.home-assistant.io/badges/lovelace_resources.svg)](https://my.home-assistant.io/redirect/lovelace_resources).
-      _(Alternatively go to Settings -> Dashboards -> Resources -> Add Resource)_
-
-      ```yaml
-      URL: /hacsfiles/clock-weather-card/clock-weather-card.js
-      Type: JavaScript Module
-      ```
-
-4. Restart Home Assistant.
+4. Restart Home Assistant and hard-refresh your browser after installing or updating, so the new version is loaded.
 5. Add [configuration](#configuration) for the card in your `ui-lovelace.yaml` or via the UI.
 
 ## Configuration
@@ -89,14 +135,14 @@ The basic idea of the forecast bars is to be able to understand the weather tren
 ### Minimal configuration
 
 ```yaml
-type: custom:clock-weather-card
+type: custom:clock-weather-card-custom
 entity: weather.home  # replace with your weather providers's entity id
 ```
 
 ### Full configuration
 
 ```yaml
-type: custom:clock-weather-card
+type: custom:clock-weather-card-custom
 entity: weather.home  # replace with your weather providers's entity id
 title: Home
 sun_entity: sun.sun
@@ -122,13 +168,18 @@ apparent_sensor: sensor.real_feel_temperature
 aqi_sensor: sensor.air_quality_index
 wind_speed_sensor: sensor.wind_speed
 wind_direction_sensor: sensor.wind_direction
+rain_rate_sensor: sensor.rain_rate
+warning_sensor: sensor.met_office_warnings_nw
+warning_areas:
+  - Blackpool
+warning_dismiss_entity: input_boolean.weather_alert_dismissed
 ```
 
 ### Options
 
 | Name                  | Type             | Requirement  | Description                                                                                                                                                                                                                       | Default   |
 | --------------------- | ---------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| type                  | string           | **Required** | `custom:clock-weather-card`                                                                                                                                                                                                       |           |
+| type                  | string           | **Required** | `custom:clock-weather-card-custom`                                                                                                                                                                                                       |           |
 | entity                | string           | **Required** | ID of the weather entity                                                                                                                                                                                                          |           |
 | title                 | string           | **Optional** | Title of the card                                                                                                                                                                                                                 | `''`      |
 | sun_entity            | boolean          | **Optional** | ID of the sun entity. Used to determine whether to show a day or night icon. If sun integration is not enabled, day icon will be shown                                                                                            | `sun.sun` |
@@ -152,11 +203,12 @@ wind_direction_sensor: sensor.wind_direction
 | show_decimal          | boolean          | **Optional** | Displays main temperature without rounding                                                                                                                                                                                        | `false`   |
 | apparent_sensor       | string           | **Optional** | ID of the apparent temperature sensor entity. It is used to show the apparent temperature based on a sensor and will only show it if value is provided.                                                                           | `''`      |
 | aqi_sensor            | string           | **Optional** | ID of the Air Quality Index sensor entity. It is used to show the AQI based on a sensor and will only show it if value is provided.                                                                                               | `''`      |
-| wind_speed_sensor     | string           | **Optional** | ID of the wind speed sensor entity. When configured, appends the wind speed (with unit) to the weather state line, e.g. `Cloudy, 14°, 12 mph NW`.                                                                                 | `''`      |
+| wind_speed_sensor     | string           | **Optional** | ID of the wind speed sensor entity. When configured, appends the wind speed (with unit) to the weather state line, e.g. `Cloudy, 14°, 12 mph NW`. Hidden while a warning is shown.                                       | `''`      |
 | wind_direction_sensor | string           | **Optional** | ID of the wind direction sensor entity. Accepts a numeric bearing (degrees, converted to a 16-point compass abbreviation) or a string abbreviation (e.g. `NW`). Displayed alongside wind speed on the weather state line.         | `''`      |
-| warning_sensor        | string           | **Optional** | ID of a [feedparser](https://github.com/custom-components/feedparser) sensor tracking the Met Office warnings RSS feed. When it has entries, a coloured banner (highest severity, plus a `(+N)` count of further warnings) is shown at the top of the card. | `''`      |
-| warning_areas         | string[]         | **Optional** | Only warnings whose title or summary mention one of these names (case-insensitive, e.g. `Lancashire`) are shown. The feed lists counties, not towns. If empty, all entries are shown.                                              | `[]`      |
-| warning_dismiss_entity | string          | **Optional** | ID of an `input_boolean`. Tapping the banner turns it on and hides the banner while it is on. Reset it with an automation when the feed sensor changes so the next warning is shown.                                              | `''`      |
+| rain_rate_sensor      | string           | **Optional** | ID of the rain rate sensor entity (mm/h). When the value is above zero, `Rain: x mm/h` is shown in the today section.                                                                                                             | `''`      |
+| warning_sensor        | string           | **Optional** | ID of a [feedparser](https://github.com/custom-components/feedparser) sensor tracking a Met Office warnings RSS feed. When it has matching entries, the weather icon and text line are replaced by the highest severity warning. See [Weather warnings](#weather-warnings). | `''`      |
+| warning_areas         | string[]         | **Optional** | Only warnings whose title or summary mention one of these names (case-insensitive, e.g. `Blackpool`) are shown. The feed lists counties and unitary authorities, not towns. If empty, all entries are shown.                      | `[]`      |
+| warning_dismiss_entity | string          | **Optional** | ID of an `input_boolean`. Tapping the warning icon turns it on and hides the warning while it is on. Reset it with an automation when the feed sensor changes so the next warning is shown.                                       | `''`      |
 
 ## Footnotes
 

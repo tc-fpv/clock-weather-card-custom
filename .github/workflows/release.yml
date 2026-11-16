@@ -7,6 +7,9 @@ on:
   # (releases created with GITHUB_TOKEN don't trigger release events).
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Prepare release

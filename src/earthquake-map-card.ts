@@ -317,7 +317,7 @@ export class EarthquakeMapCard extends LitElement {
     this.markerLayer = L.layerGroup().addTo(this.map)
     this.resizeObserver = new ResizeObserver(() => { this.map?.invalidateSize() })
     this.resizeObserver.observe(container)
-    void this.initRadar()
+    this.initRadar()
   }
 
   private async fetchRadarUrl (): Promise<string | null> {
@@ -326,22 +326,74 @@ export class EarthquakeMapCard extends LitElement {
       const data = await res.json() as { host: string, radar: { past: Array<{ path: string }> } }
       const latest = data.radar.past[data.radar.past.length - 1]
       return latest ? `${data.host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png` : null
-    } catch {
+    } catch (err) {
+      console.warn('earthquake-map-card: could not load rain radar', err)
       return null
     }
   }
 
-  private async initRadar (): Promise<void> {
+  private initRadar (): void {
     const map = this.map
+    if (!map) return
+    const Control = L.Control.extend({
+      onAdd: () => {
+        const box = L.DomUtil.create('div', 'leaflet-bar')
+        box.style.cssText = 'background:#fff;color:#333;padding:4px 8px;font:12px/1.4 sans-serif'
+        const label = document.createElement('label')
+        label.style.cursor = 'pointer'
+        const input = document.createElement('input')
+        input.type = 'checkbox'
+        input.style.verticalAlign = 'middle'
+        label.append(input, ' Rain radar')
+        const status = document.createElement('div')
+        status.style.cssText = 'color:#b00020;display:none'
+        box.append(label, status)
+        L.DomEvent.disableClickPropagation(box)
+        input.addEventListener('change', () => {
+          void this.setRadar(input.checked).then(ok => {
+            status.style.display = ok ? 'none' : 'block'
+            status.textContent = ok ? '' : 'Radar unavailable'
+            if (!ok) input.checked = false
+          })
+        })
+        if (this.config?.show_radar) {
+          input.checked = true
+          void this.setRadar(true).then(ok => {
+            if (!ok) {
+              input.checked = false
+              status.style.display = 'block'
+              status.textContent = 'Radar unavailable'
+            }
+          })
+        }
+        return box
+      }
+    })
+    new Control({ position: 'topright' }).addTo(map)
+  }
+
+  private async setRadar (on: boolean): Promise<boolean> {
+    const map = this.map
+    if (!map) return false
+    window.clearInterval(this.radarTimer)
+    this.radarTimer = undefined
+    if (!on) {
+      this.radarLayer?.remove()
+      return true
+    }
     const url = await this.fetchRadarUrl()
-    if (!url || !map || map !== this.map) return
-    this.radarLayer = L.tileLayer(url, { opacity: 0.6, maxZoom: 18, attribution: 'Radar: RainViewer' })
-    if (this.config?.show_radar) this.radarLayer.addTo(map)
-    L.control.layers({}, { 'Rain radar': this.radarLayer }, { collapsed: false, position: 'topright' }).addTo(map)
+    if (!url || map !== this.map) return false
+    if (this.radarLayer) {
+      this.radarLayer.setUrl(url)
+    } else {
+      this.radarLayer = L.tileLayer(url, { opacity: 0.6, maxZoom: 18, maxNativeZoom: 7, attribution: 'Radar: RainViewer' })
+    }
+    this.radarLayer.addTo(map)
     // Radar frames update about every 10 minutes
     this.radarTimer = window.setInterval(() => {
       void this.fetchRadarUrl().then(u => { if (u) this.radarLayer?.setUrl(u) })
     }, 600000)
+    return true
   }
 
   private updateRadius (): void {

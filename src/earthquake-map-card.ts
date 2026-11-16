@@ -17,6 +17,7 @@ export interface EarthquakeMapCardConfig {
   show_radius?: boolean
   time_range?: TimeRange
   show_radar?: boolean
+  show_clouds?: boolean
 }
 
 type TimeRange = '24h' | '7d' | '30d' | 'all'
@@ -28,6 +29,10 @@ const RANGES: Array<{ id: TimeRange, label: string, ms: number }> = [
   { id: 'all', label: 'All', ms: Infinity }
 ]
 
+const CLOUD_WMS_URL = 'https://view.eumetsat.int/geoserver/wms'
+const CLOUD_LAYER = 'msg_fes:ir108'
+const CLOUD_DOWNSCALE = 6
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
 const RADAR_API = 'https://api.rainviewer.com/public/weather-maps.json'
 
 interface Quake {
@@ -94,8 +99,8 @@ export class EarthquakeMapCard extends LitElement {
   private resizeObserver?: ResizeObserver
   private lastEntries?: unknown
   private radiusLayer?: L.Circle
-  private radarLayer?: L.TileLayer
-  private radarTimer?: number
+  private overlayLayers: { radar?: L.Layer, cloud?: L.Layer } = {}
+  private overlayTimers: { radar?: number, cloud?: number } = {}
 
   static styles = [
     leafletCss,
@@ -183,6 +188,7 @@ export class EarthquakeMapCard extends LitElement {
       .leaflet-container {
         font-family: inherit;
       }
+
     `
   ]
 
@@ -294,9 +300,10 @@ export class EarthquakeMapCard extends LitElement {
     super.disconnectedCallback()
     this.resizeObserver?.disconnect()
     this.resizeObserver = undefined
-    window.clearInterval(this.radarTimer)
-    this.radarTimer = undefined
-    this.radarLayer = undefined
+    window.clearInterval(this.overlayTimers.radar)
+    window.clearInterval(this.overlayTimers.cloud)
+    this.overlayTimers = {}
+    this.overlayLayers = {}
     this.radiusLayer = undefined
     this.map?.remove()
     this.map = undefined
@@ -339,32 +346,35 @@ export class EarthquakeMapCard extends LitElement {
       onAdd: () => {
         const box = L.DomUtil.create('div', 'leaflet-bar')
         box.style.cssText = 'background:#fff;color:#333;padding:4px 8px;font:12px/1.4 sans-serif'
-        const label = document.createElement('label')
-        label.style.cursor = 'pointer'
-        const input = document.createElement('input')
-        input.type = 'checkbox'
-        input.style.verticalAlign = 'middle'
-        label.append(input, ' Rain radar')
-        const status = document.createElement('div')
-        status.style.cssText = 'color:#b00020;display:none'
-        box.append(label, status)
         L.DomEvent.disableClickPropagation(box)
-        input.addEventListener('change', () => {
-          void this.setRadar(input.checked).then(ok => {
-            status.style.display = ok ? 'none' : 'block'
-            status.textContent = ok ? '' : 'Radar unavailable'
-            if (!ok) input.checked = false
-          })
-        })
-        if (this.config?.show_radar) {
-          input.checked = true
-          void this.setRadar(true).then(ok => {
-            if (!ok) {
-              input.checked = false
-              status.style.display = 'block'
-              status.textContent = 'Radar unavailable'
-            }
-          })
+        const overlays: Array<{ id: 'radar' | 'cloud', label: string, initial: boolean }> = [
+          { id: 'radar', label: 'Rain radar', initial: this.config?.show_radar === true },
+          { id: 'cloud', label: 'Cloud cover', initial: this.config?.show_clouds === true }
+        ]
+        for (const o of overlays) {
+          const row = document.createElement('div')
+          const label = document.createElement('label')
+          label.style.cursor = 'pointer'
+          const input = document.createElement('input')
+          input.type = 'checkbox'
+          input.style.verticalAlign = 'middle'
+          label.append(input, ` ${o.label}`)
+          const status = document.createElement('div')
+          status.style.cssText = 'color:#b00020;display:none'
+          row.append(label, status)
+          box.append(row)
+          const apply = (): void => {
+            void this.setOverlay(o.id, input.checked).then(ok => {
+              status.style.display = ok ? 'none' : 'block'
+              status.textContent = ok ? '' : `${o.label} unavailable`
+              if (!ok) input.checked = false
+            })
+          }
+          input.addEventListener('change', apply)
+          if (o.initial) {
+            input.checked = true
+            apply()
+          }
         }
         return box
       }
@@ -372,28 +382,74 @@ export class EarthquakeMapCard extends LitElement {
     new Control({ position: 'topright' }).addTo(map)
   }
 
-  private async setRadar (on: boolean): Promise<boolean> {
+  private async setOverlay (id: 'radar' | 'cloud', on: boolean): Promise<boolean> {
     const map = this.map
     if (!map) return false
-    window.clearInterval(this.radarTimer)
-    this.radarTimer = undefined
+    window.clearInterval(this.overlayTimers[id])
+    this.overlayTimers[id] = undefined
     if (!on) {
-      this.radarLayer?.remove()
+      this.overlayLayers[id]?.remove()
+      if (id === 'cloud') map.off('moveend', this.updateCloud, this)
       return true
     }
-    const url = await this.fetchRadarUrl()
-    if (!url || map !== this.map) return false
-    if (this.radarLayer) {
-      this.radarLayer.setUrl(url)
-    } else {
-      this.radarLayer = L.tileLayer(url, { opacity: 0.6, maxZoom: 18, maxNativeZoom: 7, attribution: 'Radar: RainViewer' })
+    let layer = this.overlayLayers[id]
+    if (id === 'radar') {
+      const url = await this.fetchRadarUrl()
+      if (!url || map !== this.map) return false
+      if (layer) {
+        (layer as L.TileLayer).setUrl(url)
+      } else {
+        layer = L.tileLayer(url, { opacity: 0.6, maxZoom: 18, maxNativeZoom: 7, attribution: 'Radar: RainViewer' })
+      }
+    } else if (!layer) {
+      // One image covering the view (no tile seams). "screen" blending keeps only the bright (cloudy) pixels visible
+      const pane = map.getPane('cloud') ?? map.createPane('cloud')
+      pane.style.mixBlendMode = 'screen'
+      pane.style.zIndex = '250'
+      pane.style.pointerEvents = 'none'
+      layer = L.imageOverlay(TRANSPARENT_PIXEL, map.getBounds(), {
+        opacity: 0.9,
+        pane: 'cloud',
+        attribution: 'Cloud: EUMETSAT'
+      })
     }
-    this.radarLayer.addTo(map)
-    // Radar frames update about every 10 minutes
-    this.radarTimer = window.setInterval(() => {
-      void this.fetchRadarUrl().then(u => { if (u) this.radarLayer?.setUrl(u) })
-    }, 600000)
+    this.overlayLayers[id] = layer
+    layer.addTo(map)
+    if (id === 'cloud') {
+      map.on('moveend', this.updateCloud, this)
+      this.updateCloud()
+    }
+    // Radar frames update about every 10 minutes, MSG images every 15
+    this.overlayTimers[id] = window.setInterval(() => {
+      if (id === 'radar') {
+        void this.fetchRadarUrl().then(u => { if (u) (this.overlayLayers.radar as L.TileLayer | undefined)?.setUrl(u) })
+      } else {
+        this.updateCloud()
+      }
+    }, id === 'radar' ? 600000 : 900000)
     return true
+  }
+
+  private updateCloud = (): void => {
+    const map = this.map
+    const overlay = this.overlayLayers.cloud as L.ImageOverlay | undefined
+    if (!map || !overlay) return
+    const bounds = map.getBounds().pad(0.25)
+    const sw = L.CRS.EPSG3857.project(bounds.getSouthWest())
+    const ne = L.CRS.EPSG3857.project(bounds.getNorthEast())
+    const size = map.getSize()
+    // Request a coarse image (about the satellite's real resolution) and let the browser smooth it
+    const w = Math.max(64, Math.round(size.x * 1.5 / CLOUD_DOWNSCALE))
+    const h = Math.max(64, Math.round(size.y * 1.5 / CLOUD_DOWNSCALE))
+    const url = `${CLOUD_WMS_URL}?service=WMS&version=1.3.0&request=GetMap&layers=${CLOUD_LAYER}&styles=&format=image/png&crs=EPSG:3857` +
+      `&bbox=${sw.x},${sw.y},${ne.x},${ne.y}&width=${w}&height=${h}&_=${Math.floor(Date.now() / 900000)}`
+    const img = new Image()
+    img.onload = () => {
+      if (map !== this.map || this.overlayLayers.cloud !== overlay) return
+      overlay.setBounds(bounds)
+      overlay.setUrl(url)
+    }
+    img.src = url
   }
 
   private updateRadius (): void {

@@ -129,6 +129,7 @@ entity: sensor.bgs_uk_earthquakes
 | show_radius | boolean | **Optional** | Draw the radius ring.                                                  | `true`      |
 | time_range  | string | **Optional** | Initial time filter: `24h`, `7d`, `30d` or `all`. The list header buttons change it. | `all` |
 | show_radar  | boolean | **Optional** | Rain radar (RainViewer) on at start. It can always be toggled on the map. | `false`   |
+| show_clouds | boolean | **Optional** | Cloud cover (EUMETSAT Meteosat infrared) on at start. It can always be toggled on the map. | `false` |
 
 ## FAQ
 

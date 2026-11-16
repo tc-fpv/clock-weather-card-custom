@@ -36,6 +36,9 @@ export interface ClockWeatherCardConfig extends LovelaceCardConfig {
   wind_speed_sensor?: string
   wind_direction_sensor?: string
   rain_rate_sensor?: string
+  warning_sensor?: string
+  warning_dismiss_entity?: string
+  warning_areas?: string[]
 }
 
 export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
@@ -65,6 +68,15 @@ export interface MergedClockWeatherCardConfig extends LovelaceCardConfig {
   wind_speed_sensor?: string
   wind_direction_sensor?: string
   rain_rate_sensor?: string
+  warning_sensor?: string
+  warning_dismiss_entity?: string
+  warning_areas: string[]
+}
+
+export interface MetOfficeWarningEntry {
+  title?: string
+  summary?: string
+  links?: Array<{ rel?: string, href?: string }>
 }
 
 export const enum WeatherEntityFeature {

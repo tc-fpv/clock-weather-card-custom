@@ -7,6 +7,16 @@ export default css`
     height: 100%;
   }
 
+  clock-weather-card-warning {
+    display: block;
+    padding: 12px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #000000;
+    cursor: pointer;
+  }
+
   clock-weather-card-today {
     display: flex;
   }

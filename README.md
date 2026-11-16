@@ -154,6 +154,9 @@ wind_direction_sensor: sensor.wind_direction
 | aqi_sensor            | string           | **Optional** | ID of the Air Quality Index sensor entity. It is used to show the AQI based on a sensor and will only show it if value is provided.                                                                                               | `''`      |
 | wind_speed_sensor     | string           | **Optional** | ID of the wind speed sensor entity. When configured, appends the wind speed (with unit) to the weather state line, e.g. `Cloudy, 14°, 12 mph NW`.                                                                                 | `''`      |
 | wind_direction_sensor | string           | **Optional** | ID of the wind direction sensor entity. Accepts a numeric bearing (degrees, converted to a 16-point compass abbreviation) or a string abbreviation (e.g. `NW`). Displayed alongside wind speed on the weather state line.         | `''`      |
+| warning_sensor        | string           | **Optional** | ID of a [feedparser](https://github.com/custom-components/feedparser) sensor tracking the Met Office warnings RSS feed. When it has entries, a coloured banner (highest severity, plus a `(+N)` count of further warnings) is shown at the top of the card. | `''`      |
+| warning_areas         | string[]         | **Optional** | Only warnings whose title or summary mention one of these names (case-insensitive, e.g. `Lancashire`) are shown. The feed lists counties, not towns. If empty, all entries are shown.                                              | `[]`      |
+| warning_dismiss_entity | string          | **Optional** | ID of an `input_boolean`. Tapping the banner turns it on and hides the banner while it is on. Reset it with an automation when the feed sensor changes so the next warning is shown.                                              | `''`      |
 
 ## Footnotes
 

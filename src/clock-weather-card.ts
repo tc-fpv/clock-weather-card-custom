@@ -21,6 +21,7 @@ import {
   type WindSpeedSensor,
   type WindDirectionSensor,
   type Weather,
+  type MetOfficeWarningEntry,
   WeatherEntityFeature,
   type WeatherForecast,
   type WeatherForecastEvent
@@ -135,6 +136,11 @@ export class ClockWeatherCard extends LitElement {
       if (oldSun !== newSun) {
         return true
       }
+      for (const id of [this.config.warning_sensor, this.config.warning_dismiss_entity]) {
+        if (id && oldHass.states[id] !== this.hass.states[id]) {
+          return true
+        }
+      }
     }
 
     return hasConfigOrEntityChanged(this, changedProps, false)
@@ -171,6 +177,7 @@ export class ClockWeatherCard extends LitElement {
             ${this.config.title}
           </div>`
         : ''}
+        ${safeRender(() => this.renderWarning())}
         <div class="card-content">
           ${showToday
         ? html`
@@ -205,6 +212,75 @@ export class ClockWeatherCard extends LitElement {
     super.willUpdate(changedProps)
     if (!this.forecastSubscriber) {
       void this.subscribeForecastEvents()
+    }
+  }
+
+  private renderWarning (): TemplateResult | string {
+    const warning = this.getWarning()
+    if (!warning) {
+      return ''
+    }
+    const stop = (e: Event): void => { e.stopPropagation() }
+    const dismiss = (e: Event): void => {
+      e.stopPropagation()
+      const dismissEntity = this.config.warning_dismiss_entity
+      if (dismissEntity) {
+        void this.hass.callService('input_boolean', 'turn_on', { entity_id: dismissEntity })
+      }
+    }
+    const more = warning.extra > 0 ? ` (+${warning.extra})` : ''
+    return html`
+      <clock-weather-card-warning
+        style="background-color: ${warning.color};"
+        @click=${dismiss}
+        @mousedown=${stop}
+        @touchstart=${stop}
+        @touchend=${stop}
+        @touchcancel=${stop}
+        @keyup=${stop}
+      >${warning.icon} ${warning.label}${more}</clock-weather-card-warning>`
+  }
+
+  private getWarning (): { icon: string, label: string, color: string, extra: number } | null {
+    const sensorId = this.config.warning_sensor
+    if (!sensorId) return null
+
+    const dismissId = this.config.warning_dismiss_entity
+    if (dismissId && this.hass.states[dismissId]?.state === 'on') return null
+
+    const sensor = this.hass.states[sensorId]
+    const rawEntries = sensor?.attributes?.entries as MetOfficeWarningEntry[] | undefined
+    if (!Array.isArray(rawEntries)) return null
+
+    const areas = this.config.warning_areas.map(a => a.toLowerCase())
+    const entries = rawEntries.filter(e => {
+      if (!e?.title) return false
+      if (areas.length === 0) return true
+      const text = `${e.title} ${e.summary ?? ''}`.toLowerCase()
+      return areas.some(a => text.includes(a))
+    })
+    if (entries.length === 0) return null
+
+    const rank: Record<string, number> = { red: 3, amber: 2, yellow: 1 }
+    const parsed = entries.map(e => {
+      // Image name e.g. ".../yellow-snow.png" gives severity "yellow" and type "snow"
+      const enclosure = (e.links ?? []).find(l => l.rel === 'enclosure')
+      const parts = enclosure?.href?.split('/').pop()?.split('.')[0]?.split('-') ?? []
+      const severity = (parts[0] || e.title?.split(' ')[0] || '').toLowerCase()
+      const type = parts.length > 1
+        ? parts.slice(1).join(' ').replace(/\b\w/g, c => c.toUpperCase())
+        : ''
+      return { severity, type }
+    })
+    const top = parsed.reduce((a, b) => (rank[b.severity] ?? 0) > (rank[a.severity] ?? 0) ? b : a)
+    const severityName = top.severity.charAt(0).toUpperCase() + top.severity.slice(1)
+    const colors: Record<string, string> = { red: '#FF0000', amber: '#FFA500', yellow: '#FFD700' }
+
+    return {
+      icon: top.severity === 'red' ? '🛑' : '⚠️',
+      label: top.type ? `${severityName} Warning - ${top.type}` : `${severityName} Warning`,
+      color: colors[top.severity] ?? '#000000',
+      extra: entries.length - 1
     }
   }
 
@@ -482,7 +558,10 @@ export class ClockWeatherCard extends LitElement {
       aqi_sensor: config.aqi_sensor ?? undefined,
       wind_speed_sensor: config.wind_speed_sensor ?? undefined,
       wind_direction_sensor: config.wind_direction_sensor ?? undefined,
-      rain_rate_sensor: config.rain_rate_sensor ?? undefined
+      rain_rate_sensor: config.rain_rate_sensor ?? undefined,
+      warning_sensor: config.warning_sensor ?? undefined,
+      warning_dismiss_entity: config.warning_dismiss_entity ?? undefined,
+      warning_areas: config.warning_areas ?? []
     }
   }
 

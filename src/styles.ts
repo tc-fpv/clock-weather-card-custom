@@ -7,15 +7,18 @@ export default css`
     height: 100%;
   }
 
-  clock-weather-card-warning {
-    display: block;
-    padding: 12px;
-    border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0;
-    text-align: center;
-    font-size: 18px;
-    font-weight: bold;
-    color: #000000;
+  clock-weather-card-warning-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
     cursor: pointer;
+  }
+
+  clock-weather-card-warning-icon svg {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 
   clock-weather-card-today {

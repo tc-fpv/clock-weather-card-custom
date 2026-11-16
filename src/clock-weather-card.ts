@@ -177,7 +177,6 @@ export class ClockWeatherCard extends LitElement {
             ${this.config.title}
           </div>`
         : ''}
-        ${safeRender(() => this.renderWarning())}
         <div class="card-content">
           ${showToday
         ? html`
@@ -215,11 +214,7 @@ export class ClockWeatherCard extends LitElement {
     }
   }
 
-  private renderWarning (): TemplateResult | string {
-    const warning = this.getWarning()
-    if (!warning) {
-      return ''
-    }
+  private renderWarningIcon (warning: { color: string }): TemplateResult {
     const stop = (e: Event): void => { e.stopPropagation() }
     const dismiss = (e: Event): void => {
       e.stopPropagation()
@@ -228,20 +223,24 @@ export class ClockWeatherCard extends LitElement {
         void this.hass.callService('input_boolean', 'turn_on', { entity_id: dismissEntity })
       }
     }
-    const more = warning.extra > 0 ? ` (+${warning.extra})` : ''
     return html`
-      <clock-weather-card-warning
-        style="background-color: ${warning.color};"
+      <clock-weather-card-warning-icon
         @click=${dismiss}
         @mousedown=${stop}
         @touchstart=${stop}
         @touchend=${stop}
         @touchcancel=${stop}
         @keyup=${stop}
-      >${warning.icon} ${warning.label}${more}</clock-weather-card-warning>`
+      >
+        <svg class="grow-img" viewBox="0 0 24 24" aria-label="Weather warning - tap to dismiss">
+          <path d="M12 2 L23 21 H1 Z" fill="${warning.color}" stroke="#000000" stroke-width="1" stroke-linejoin="round" />
+          <rect x="11" y="9" width="2" height="6" fill="#000000" />
+          <rect x="11" y="16.5" width="2" height="2" fill="#000000" />
+        </svg>
+      </clock-weather-card-warning-icon>`
   }
 
-  private getWarning (): { icon: string, label: string, color: string, extra: number } | null {
+  private getWarning (): { label: string, color: string, extra: number } | null {
     const sensorId = this.config.warning_sensor
     if (!sensorId) return null
 
@@ -277,7 +276,6 @@ export class ClockWeatherCard extends LitElement {
     const colors: Record<string, string> = { red: '#FF0000', amber: '#FFA500', yellow: '#FFD700' }
 
     return {
-      icon: top.severity === 'red' ? '🛑' : '⚠️',
       label: top.type ? `${severityName} Warning - ${top.type}` : `${severityName} Warning`,
       color: colors[top.severity] ?? '#000000',
       extra: entries.length - 1
@@ -309,15 +307,17 @@ export class ClockWeatherCard extends LitElement {
       windDirection
     ].filter(Boolean).join(' ')
     const rainRate = this.getRainRate()
+    const warning = this.getWarning()
+    const warningText = warning ? `${warning.label}${warning.extra > 0 ? ` (+${warning.extra})` : ''}` : null
 
     return html`
       <clock-weather-card-today-left>
-        <img class="grow-img" src=${icon} />
+        ${warning ? this.renderWarningIcon(warning) : html`<img class="grow-img" src=${icon} />`}
       </clock-weather-card-today-left>
       <clock-weather-card-today-right>
         <clock-weather-card-today-right-wrap>
           <clock-weather-card-today-right-wrap-top>
-            ${(() => {
+            ${warningText !== null ? warningText : (() => {
               const base = this.config.hide_clock ? weatherString : localizedTemp ? `${weatherString}, ${localizedTemp}` : weatherString
               return windSuffix ? `${base}, ${windSuffix}` : base
             })()}

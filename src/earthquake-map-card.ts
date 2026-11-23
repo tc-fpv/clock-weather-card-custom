@@ -68,6 +68,7 @@ const WARNING_COLORS: Record<string, string> = { yellow: '#FFD500', amber: '#FF9
 const SEVERITY_COLORS: Record<string, string> = { minor: '#FFD500', moderate: '#FFD500', severe: '#FF9500', extreme: '#E8222B' }
 
 function warningColor (title: string, severity: string): string {
+  if (/flood/i.test(title)) return '#29B6F6'
   const word = /^(yellow|amber|orange|red)/i.exec(title.trim())?.[1]?.toLowerCase()
   return (word ? WARNING_COLORS[word] : SEVERITY_COLORS[severity.toLowerCase()]) ?? '#FFD500'
 }
@@ -456,7 +457,7 @@ export class EarthquakeMapCard extends LitElement {
       if (coords.length < 3) continue
       const title = str(e.title)
       const color = warningColor(title, str(e.cap_severity ?? e.severity))
-      const poly = L.polygon(coords, { color, weight: 2, fillColor: color, fillOpacity: 0.25 })
+      const poly = L.polygon(coords, { color, weight: 3, fillColor: color, fillOpacity: 0.3 })
       const box = document.createElement('div')
       const name = document.createElement('strong')
       name.textContent = str(e.cap_event ?? e.event) || title

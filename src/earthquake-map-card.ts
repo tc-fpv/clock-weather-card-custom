@@ -17,6 +17,8 @@ export interface EarthquakeMapCardConfig {
   show_radius?: boolean
   time_range?: TimeRange
   show_radar?: boolean
+  warnings_entity?: string
+  show_warnings?: boolean
 }
 
 type TimeRange = '24h' | '7d' | '30d' | 'all'
@@ -62,6 +64,24 @@ function magnitudeColor (m: number): string {
   return '#FFD700'
 }
 
+const WARNING_COLORS: Record<string, string> = { yellow: '#FFD500', amber: '#FF9500', orange: '#FF9500', red: '#E8222B' }
+const SEVERITY_COLORS: Record<string, string> = { minor: '#FFD500', moderate: '#FFD500', severe: '#FF9500', extreme: '#E8222B' }
+
+function warningColor (title: string, severity: string): string {
+  const word = /^(yellow|amber|orange|red)/i.exec(title.trim())?.[1]?.toLowerCase()
+  return (word ? WARNING_COLORS[word] : SEVERITY_COLORS[severity.toLowerCase()]) ?? '#FFD500'
+}
+
+// "lat,lon lat,lon ..." (CAP polygon) to Leaflet coordinates
+function parsePolygon (text: string): Array<[number, number]> {
+  const pts: Array<[number, number]> = []
+  for (const pair of text.trim().split(/\s+/)) {
+    const [la, lo] = pair.split(',').map(Number)
+    if (Number.isFinite(la) && Number.isFinite(lo)) pts.push([la, lo])
+  }
+  return pts
+}
+
 function toTitleCase (s: string): string {
   return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 }
@@ -96,6 +116,9 @@ export class EarthquakeMapCard extends LitElement {
   private radiusLayer?: L.Circle
   private radarLayer?: L.TileLayer
   private radarTimer?: number
+  private warningLayer?: L.LayerGroup
+  private warningsOn = false
+  private lastWarnings?: unknown
 
   static styles = [
     leafletCss,
@@ -290,6 +313,11 @@ export class EarthquakeMapCard extends LitElement {
       this.lastEntries = entries
       this.drawMarkers()
     }
+    const warnings = this.config.warnings_entity ? this.hass?.states[this.config.warnings_entity]?.attributes?.entries : undefined
+    if (this.map && warnings !== this.lastWarnings) {
+      this.lastWarnings = warnings
+      this.drawWarnings()
+    }
     this.updateRadius()
   }
 
@@ -300,6 +328,8 @@ export class EarthquakeMapCard extends LitElement {
     window.clearInterval(this.radarTimer)
     this.radarTimer = undefined
     this.radarLayer = undefined
+    this.warningLayer = undefined
+    this.lastWarnings = undefined
     this.radiusLayer = undefined
     this.map?.remove()
     this.map = undefined
@@ -343,6 +373,20 @@ export class EarthquakeMapCard extends LitElement {
         const box = L.DomUtil.create('div', 'leaflet-bar')
         box.style.cssText = 'background:#fff;color:#333;padding:4px 8px;font:12px/1.4 sans-serif'
         L.DomEvent.disableClickPropagation(box)
+        if (this.config?.warnings_entity) {
+          const wl = document.createElement('label')
+          wl.style.cursor = 'pointer'
+          const wi = document.createElement('input')
+          wi.type = 'checkbox'
+          wi.style.verticalAlign = 'middle'
+          wi.checked = this.config.show_warnings !== false
+          this.warningsOn = wi.checked
+          wl.append(wi, ' Weather warnings')
+          wi.addEventListener('change', () => { this.warningsOn = wi.checked; this.drawWarnings() })
+          const wrow = document.createElement('div')
+          wrow.append(wl)
+          box.append(wrow)
+        }
         const label = document.createElement('label')
         label.style.cursor = 'pointer'
         const input = document.createElement('input')
@@ -392,6 +436,39 @@ export class EarthquakeMapCard extends LitElement {
       void this.fetchRadarUrl().then(u => { if (u) this.radarLayer?.setUrl(u) })
     }, 600000)
     return true
+  }
+
+  private drawWarnings (): void {
+    const map = this.map
+    if (!map) return
+    this.warningLayer?.remove()
+    this.warningLayer = undefined
+    if (!this.warningsOn || !this.config?.warnings_entity) return
+    const entries = this.hass?.states[this.config.warnings_entity]?.attributes?.entries as Array<Record<string, unknown>> | undefined
+    if (!Array.isArray(entries)) return
+    const group = L.layerGroup()
+    const now = Date.now()
+    const str = (v: unknown): string => typeof v === 'string' ? v : ''
+    for (const e of entries) {
+      const expires = Date.parse(str(e.cap_expires ?? e.expires))
+      if (Number.isFinite(expires) && expires < now) continue
+      const coords = parsePolygon(str(e.cap_polygon ?? e.polygon))
+      if (coords.length < 3) continue
+      const title = str(e.title)
+      const color = warningColor(title, str(e.cap_severity ?? e.severity))
+      const poly = L.polygon(coords, { color, weight: 2, fillColor: color, fillOpacity: 0.25 })
+      const box = document.createElement('div')
+      const name = document.createElement('strong')
+      name.textContent = str(e.cap_event ?? e.event) || title
+      box.append(name)
+      const area = str(e.cap_areadesc ?? e.areaDesc)
+      if (area) box.append(document.createElement('br'), document.createTextNode(area))
+      if (Number.isFinite(expires)) box.append(document.createElement('br'), document.createTextNode(`Until ${new Date(expires).toLocaleString()}`))
+      poly.bindPopup(box)
+      group.addLayer(poly)
+    }
+    group.addTo(map)
+    this.warningLayer = group
   }
 
   private updateRadius (): void {

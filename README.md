@@ -129,6 +129,8 @@ entity: sensor.bgs_uk_earthquakes
 | show_radius | boolean | **Optional** | Draw the radius ring.                                                  | `true`      |
 | time_range  | string | **Optional** | Initial time filter: `24h`, `7d`, `30d` or `all`. The list header buttons change it. | `all` |
 | show_radar  | boolean | **Optional** | Rain radar (RainViewer) on at start. It can always be toggled on the map. | `false`   |
+| warnings_entity | string | **Optional** | A feedparser sensor for the MeteoAlarm UK feed (`https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-united-kingdom`). Its warning areas are drawn on the map, coloured by warning level. Set the integration's User-Agent option to `HomeAssistant` if the download fails. | |
+| show_warnings | boolean | **Optional** | Warnings shown at start (only used with `warnings_entity`). They can always be toggled on the map. | `true` |
 
 ## FAQ
 

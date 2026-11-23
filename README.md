@@ -131,6 +131,7 @@ entity: sensor.bgs_uk_earthquakes
 | show_radar  | boolean | **Optional** | Rain radar (RainViewer) on at start. It can always be toggled on the map. | `false`   |
 | warnings_entity | string | **Optional** | A feedparser sensor for the MeteoAlarm UK feed (`https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-united-kingdom`). Its warning areas are drawn on the map, coloured by warning level. Set the integration's User-Agent option to `HomeAssistant` if the download fails. | |
 | show_warnings | boolean | **Optional** | Warnings shown at start (only used with `warnings_entity`). They can always be toggled on the map. | `true` |
+| show_forecast | boolean | **Optional** | Show the forecast layer (Open-Meteo) at start: a temperature / chance-of-rain colour wash with a 48-hour slider; click the map for an hourly forecast. Can always be toggled on the map. | `false` |
 
 ## FAQ
 

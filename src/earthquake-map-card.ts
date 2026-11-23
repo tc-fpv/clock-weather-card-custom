@@ -19,6 +19,7 @@ export interface EarthquakeMapCardConfig {
   show_radar?: boolean
   warnings_entity?: string
   show_warnings?: boolean
+  show_forecast?: boolean
 }
 
 type TimeRange = '24h' | '7d' | '30d' | 'all'
@@ -29,6 +30,51 @@ const RANGES: Array<{ id: TimeRange, label: string, ms: number }> = [
   { id: '30d', label: '30d', ms: 30 * 24 * 3600000 },
   { id: 'all', label: 'All', ms: Infinity }
 ]
+
+const FORECAST_API = 'https://api.open-meteo.com/v1/forecast'
+const FORECAST_HOURS = 48
+const FORECAST_COLS = 8
+const FORECAST_ROWS = 6
+
+type ForecastMetric = 'temp' | 'rain'
+
+interface ForecastGrid { cols: number, rows: number, bounds: L.LatLngBounds, times: string[], temp: number[][], pop: number[][] }
+
+const TEMP_STOPS: Array<[number, [number, number, number]]> = [
+  [-10, [110, 70, 210]], [-2, [60, 120, 235]], [5, [70, 190, 235]], [10, [90, 205, 130]],
+  [15, [235, 225, 80]], [20, [250, 170, 60]], [25, [240, 100, 50]], [32, [205, 40, 45]]
+]
+const TEMP_GRADIENT = 'linear-gradient(to right,rgb(110,70,210),rgb(60,120,235),rgb(70,190,235),rgb(90,205,130),rgb(235,225,80),rgb(250,170,60),rgb(240,100,50),rgb(205,40,45))'
+const RAIN_GRADIENT = 'linear-gradient(to right,rgba(40,110,255,0),rgba(40,110,255,1))'
+
+function tempColor (v: number): [number, number, number] {
+  const first = TEMP_STOPS[0]
+  const last = TEMP_STOPS[TEMP_STOPS.length - 1]
+  if (v <= first[0]) return first[1]
+  if (v >= last[0]) return last[1]
+  for (let i = 1; i < TEMP_STOPS.length; i++) {
+    const [v1, c1] = TEMP_STOPS[i]
+    const [v0, c0] = TEMP_STOPS[i - 1]
+    if (v <= v1) {
+      const t = (v - v0) / (v1 - v0)
+      return [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t]
+    }
+  }
+  return last[1]
+}
+
+function weatherEmoji (code: number): string {
+  if (code === 0) return '\u2600\uFE0F'
+  if (code <= 2) return '\u{1F324}\uFE0F'
+  if (code === 3) return '\u2601\uFE0F'
+  if (code <= 48) return '\u{1F32B}\uFE0F'
+  if (code <= 57) return '\u{1F326}\uFE0F'
+  if (code <= 67) return '\u{1F327}\uFE0F'
+  if (code <= 77) return '\u{1F328}\uFE0F'
+  if (code <= 82) return '\u{1F327}\uFE0F'
+  if (code <= 86) return '\u{1F328}\uFE0F'
+  return '\u26C8\uFE0F'
+}
 
 const RADAR_API = 'https://api.rainviewer.com/public/weather-maps.json'
 
@@ -119,6 +165,17 @@ export class EarthquakeMapCard extends LitElement {
   private radarTimer?: number
   private warningLayer?: L.LayerGroup
   private warningsOn = false
+  private forecastOverlay?: L.ImageOverlay
+  private forecastOn = false
+  private forecastHour = 0
+  private forecastMetric: ForecastMetric = 'temp'
+  private forecastGrid?: ForecastGrid
+  private forecastTimer?: number
+  private forecastDebounce?: number
+  private forecastSeq = 0
+  private forecastLabel?: HTMLElement
+  private forecastLegend?: HTMLElement
+  private forecastPopup?: L.Popup
   private lastWarnings?: unknown
 
   static styles = [
@@ -331,6 +388,11 @@ export class EarthquakeMapCard extends LitElement {
     this.radarLayer = undefined
     this.warningLayer = undefined
     this.lastWarnings = undefined
+    window.clearInterval(this.forecastTimer)
+    window.clearTimeout(this.forecastDebounce)
+    this.forecastOverlay = undefined
+    this.forecastGrid = undefined
+    this.forecastPopup = undefined
     this.radiusLayer = undefined
     this.map?.remove()
     this.map = undefined
@@ -409,6 +471,71 @@ export class EarthquakeMapCard extends LitElement {
           input.checked = true
           apply()
         }
+        const frow = document.createElement('div')
+        const flabel = document.createElement('label')
+        flabel.style.cursor = 'pointer'
+        const finput = document.createElement('input')
+        finput.type = 'checkbox'
+        finput.style.verticalAlign = 'middle'
+        flabel.append(finput, ' Forecast')
+        const fstatus = document.createElement('div')
+        fstatus.style.cssText = 'color:#b00020;display:none'
+        const fdetails = document.createElement('div')
+        fdetails.style.display = 'none'
+        const select = document.createElement('select')
+        select.style.cssText = 'width:100%;margin:2px 0'
+        for (const [value, text] of [['temp', 'Temperature'], ['rain', 'Chance of rain']]) {
+          const o = document.createElement('option')
+          o.value = value
+          o.textContent = text
+          select.append(o)
+        }
+        const slider = document.createElement('input')
+        slider.type = 'range'
+        slider.min = '0'
+        slider.max = String(FORECAST_HOURS - 1)
+        slider.step = '1'
+        slider.value = '0'
+        slider.style.cssText = 'width:150px'
+        const flab = document.createElement('div')
+        flab.style.textAlign = 'center'
+        const legend = document.createElement('div')
+        legend.style.cssText = 'height:8px;border-radius:4px;margin:2px 0'
+        const scale = document.createElement('div')
+        scale.style.cssText = 'display:flex;justify-content:space-between;font-size:10px;color:#666'
+        const lo = document.createElement('span')
+        const hi = document.createElement('span')
+        scale.append(lo, hi)
+        const hint = document.createElement('div')
+        hint.style.cssText = 'font-size:10px;color:#666;text-align:center'
+        hint.textContent = 'Click the map for hourly detail'
+        fdetails.append(select, slider, flab, legend, scale, hint)
+        this.forecastLabel = flab
+        const paintLegend = (): void => {
+          const temp = this.forecastMetric === 'temp'
+          legend.style.background = temp ? TEMP_GRADIENT : RAIN_GRADIENT
+          lo.textContent = temp ? '-10\u00B0' : '0%'
+          hi.textContent = temp ? '32\u00B0' : '100%'
+        }
+        paintLegend()
+        frow.append(flabel, fstatus, fdetails)
+        box.append(frow)
+        const applyForecast = (): void => {
+          this.forecastOn = finput.checked
+          fdetails.style.display = finput.checked ? 'block' : 'none'
+          void this.setForecast(finput.checked).then(ok => {
+            fstatus.style.display = ok ? 'none' : 'block'
+            fstatus.textContent = ok ? '' : 'Forecast unavailable'
+            if (!ok) { finput.checked = false; this.forecastOn = false; fdetails.style.display = 'none' }
+          })
+        }
+        finput.addEventListener('change', applyForecast)
+        select.addEventListener('change', () => { this.forecastMetric = select.value as ForecastMetric; paintLegend(); this.drawForecast() })
+        slider.addEventListener('input', () => { this.forecastHour = Number(slider.value); this.drawForecast() })
+        if (this.config?.show_forecast === true) {
+          finput.checked = true
+          applyForecast()
+        }
         return box
       }
     })
@@ -437,6 +564,193 @@ export class EarthquakeMapCard extends LitElement {
       void this.fetchRadarUrl().then(u => { if (u) this.radarLayer?.setUrl(u) })
     }, 600000)
     return true
+  }
+
+  private async setForecast (on: boolean): Promise<boolean> {
+    const map = this.map
+    if (!map) return false
+    window.clearInterval(this.forecastTimer)
+    window.clearTimeout(this.forecastDebounce)
+    this.forecastTimer = undefined
+    map.off('moveend', this.onForecastMove, this)
+    map.off('click', this.onForecastClick, this)
+    if (!on) {
+      this.forecastSeq++
+      this.forecastOverlay?.remove()
+      this.forecastOverlay = undefined
+      this.forecastPopup?.remove()
+      return true
+    }
+    const ok = await this.loadForecast()
+    if (!ok || map !== this.map) return false
+    map.on('moveend', this.onForecastMove, this)
+    map.on('click', this.onForecastClick, this)
+    // Open-Meteo models update hourly
+    this.forecastTimer = window.setInterval(() => { void this.loadForecast() }, 3600000)
+    return true
+  }
+
+  private onForecastMove = (): void => {
+    window.clearTimeout(this.forecastDebounce)
+    this.forecastDebounce = window.setTimeout(() => { void this.loadForecast() }, 700)
+  }
+
+  private async loadForecast (): Promise<boolean> {
+    const map = this.map
+    if (!map) return false
+    const seq = ++this.forecastSeq
+    const bounds = map.getBounds().pad(0.2)
+    const sw = L.CRS.EPSG3857.project(bounds.getSouthWest())
+    const ne = L.CRS.EPSG3857.project(bounds.getNorthEast())
+    const lats: string[] = []
+    const lons: string[] = []
+    // Evenly spaced in map (Mercator) space so the colour wash lines up with the image bounds
+    for (let r = 0; r < FORECAST_ROWS; r++) {
+      for (let c = 0; c < FORECAST_COLS; c++) {
+        const ll = L.CRS.EPSG3857.unproject(L.point(
+          sw.x + (ne.x - sw.x) * c / (FORECAST_COLS - 1),
+          sw.y + (ne.y - sw.y) * r / (FORECAST_ROWS - 1)
+        ))
+        lats.push(Math.max(-89, Math.min(89, ll.lat)).toFixed(2))
+        lons.push(ll.lng.toFixed(2))
+      }
+    }
+    const url = `${FORECAST_API}?latitude=${lats.join(',')}&longitude=${lons.join(',')}` +
+      `&hourly=temperature_2m,precipitation_probability&forecast_hours=${FORECAST_HOURS}&timezone=auto`
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json() as unknown
+      const list = (Array.isArray(json) ? json : [json]) as Array<{ hourly: { time: string[], temperature_2m: number[], precipitation_probability: number[] } }>
+      if (seq !== this.forecastSeq || map !== this.map) return true
+      if (list.length !== FORECAST_COLS * FORECAST_ROWS) throw new Error('unexpected response')
+      this.forecastGrid = {
+        cols: FORECAST_COLS,
+        rows: FORECAST_ROWS,
+        bounds,
+        times: list[0].hourly.time,
+        temp: list.map(d => d.hourly.temperature_2m),
+        pop: list.map(d => d.hourly.precipitation_probability)
+      }
+      this.drawForecast()
+      return true
+    } catch (err) {
+      console.warn('earthquake-map-card: could not load forecast', err)
+      return false
+    }
+  }
+
+  private drawForecast (): void {
+    const map = this.map
+    const g = this.forecastGrid
+    if (!map || !g || !this.forecastOn) return
+    const sw = L.CRS.EPSG3857.project(g.bounds.getSouthWest())
+    const ne = L.CRS.EPSG3857.project(g.bounds.getNorthEast())
+    const w = 160
+    const h = Math.max(40, Math.min(240, Math.round(w * (ne.y - sw.y) / (ne.x - sw.x))))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const img = ctx.createImageData(w, h)
+    const i = this.forecastHour
+    const metric = this.forecastMetric
+    const values = (metric === 'temp' ? g.temp : g.pop).map(series => series[i] ?? 0)
+    for (let py = 0; py < h; py++) {
+      const gy = (1 - py / (h - 1)) * (g.rows - 1)
+      const r0 = Math.min(g.rows - 2, Math.floor(gy))
+      const fy = gy - r0
+      for (let px = 0; px < w; px++) {
+        const gx = px / (w - 1) * (g.cols - 1)
+        const c0 = Math.min(g.cols - 2, Math.floor(gx))
+        const fx = gx - c0
+        const at = (r: number, c: number): number => values[r * g.cols + c]
+        const v = (at(r0, c0) * (1 - fx) + at(r0, c0 + 1) * fx) * (1 - fy) + (at(r0 + 1, c0) * (1 - fx) + at(r0 + 1, c0 + 1) * fx) * fy
+        const o = (py * w + px) * 4
+        if (metric === 'temp') {
+          const [cr, cg, cb] = tempColor(v)
+          img.data[o] = cr; img.data[o + 1] = cg; img.data[o + 2] = cb; img.data[o + 3] = 255
+        } else {
+          img.data[o] = 40; img.data[o + 1] = 110; img.data[o + 2] = 255; img.data[o + 3] = Math.round(Math.max(0, Math.min(1, v / 100)) * 255)
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0)
+    const url = canvas.toDataURL('image/png')
+    if (this.forecastOverlay) {
+      this.forecastOverlay.setBounds(g.bounds)
+      this.forecastOverlay.setUrl(url)
+    } else {
+      const pane = map.getPane('forecast') ?? map.createPane('forecast')
+      pane.style.zIndex = '250'
+      pane.style.pointerEvents = 'none'
+      this.forecastOverlay = L.imageOverlay(url, g.bounds, { opacity: 0.5, pane: 'forecast', attribution: 'Forecast: Open-Meteo' }).addTo(map)
+    }
+    const t = g.times[i]
+    if (this.forecastLabel && t) {
+      this.forecastLabel.textContent = i === 0 ? 'Now' : `+${i}h \u00B7 ${new Date(t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
+    }
+  }
+
+  private onForecastClick = (e: L.LeafletMouseEvent): void => {
+    const map = this.map
+    if (!map || !this.forecastOn) return
+    const target = e.originalEvent.target as HTMLElement | null
+    if (target?.closest('.leaflet-interactive, .leaflet-popup, .leaflet-control')) return
+    const popup = L.popup({ maxWidth: 420, minWidth: 280 }).setLatLng(e.latlng)
+    const loading = document.createElement('div')
+    loading.style.cssText = 'color:#333;font:12px sans-serif'
+    loading.textContent = 'Loading forecast\u2026'
+    popup.setContent(loading).openOn(map)
+    this.forecastPopup = popup
+    const start = this.forecastHour
+    const url = `${FORECAST_API}?latitude=${e.latlng.lat.toFixed(3)}&longitude=${e.latlng.lng.toFixed(3)}` +
+      `&hourly=temperature_2m,precipitation_probability,weather_code&forecast_hours=${FORECAST_HOURS}&timezone=auto`
+    void fetch(url).then(async res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const d = await res.json() as { hourly: { time: string[], temperature_2m: number[], precipitation_probability: number[], weather_code: number[] } }
+      popup.setContent(this.buildForecastStrip(d.hourly, start))
+    }).catch(() => { loading.textContent = 'Forecast unavailable' })
+  }
+
+  private buildForecastStrip (h: { time: string[], temperature_2m: number[], precipitation_probability: number[], weather_code: number[] }, start: number): HTMLElement {
+    const root = document.createElement('div')
+    root.style.cssText = 'color:#222;font:12px/1.3 sans-serif'
+    const title = document.createElement('div')
+    title.style.cssText = 'font-weight:600;margin-bottom:6px'
+    title.textContent = 'Forecast from ' + (h.time[start] ? new Date(h.time[start]).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : 'now')
+    const strip = document.createElement('div')
+    strip.style.cssText = 'display:flex;gap:2px;justify-content:space-between'
+    for (let k = 0; k < 8; k++) {
+      const idx = start + k * 3
+      const t = h.temperature_2m[idx]
+      if (t === undefined) break
+      const col = document.createElement('div')
+      col.style.cssText = 'flex:1;text-align:center;min-width:32px'
+      const time = document.createElement('div')
+      time.style.cssText = 'color:#666;font-size:11px'
+      time.textContent = new Date(h.time[idx]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      const icon = document.createElement('div')
+      icon.style.fontSize = '20px'
+      icon.textContent = weatherEmoji(h.weather_code[idx] ?? 0)
+      const temp = document.createElement('div')
+      temp.style.fontWeight = '600'
+      temp.textContent = `${Math.round(t)}\u00B0`
+      const pop = h.precipitation_probability[idx] ?? 0
+      const bar = document.createElement('div')
+      bar.style.cssText = 'height:34px;display:flex;align-items:flex-end;justify-content:center;margin-top:2px'
+      const fill = document.createElement('div')
+      fill.style.cssText = `width:14px;border-radius:3px 3px 0 0;background:#2e7bff;height:${Math.max(2, Math.round(pop * 0.34))}px`
+      bar.append(fill)
+      const pct = document.createElement('div')
+      pct.style.cssText = 'color:#2e7bff;font-size:11px'
+      pct.textContent = `${pop}%`
+      col.append(time, icon, temp, bar, pct)
+      strip.append(col)
+    }
+    root.append(title, strip)
+    return root
   }
 
   private drawWarnings (): void {

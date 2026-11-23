@@ -235,11 +235,13 @@ export class EarthquakeMapCard extends LitElement {
       if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(mag)) continue
       const place = /Location:\s*([^;]+);/.exec(summary)?.[1]?.trim() ?? ''
       const depth = /Depth:\s*([^;]+);/.exec(summary)?.[1]?.trim() ?? ''
-      // BGS publishes times without a zone; they are UTC
-      const time = Date.parse(`${e.published ?? ''} GMT`)
+      // BGS publishes times without a zone; they are UTC. Prefer the full date in the summary:
+      // the feed's "published" field can lack the year ("Wed, Nov 18 04:53 PM"), which parses as 2001.
+      const origin = /Origin date\/time:\s*([^;]+);/.exec(summary)?.[1]?.trim() ?? e.published ?? ''
+      const time = Date.parse(`${origin} GMT`)
       if (Number.isFinite(time) && time < cutoff) continue
       quakes.push({
-        id: e.link ?? `${lat},${lon},${e.published}`,
+        id: e.link ?? `${lat},${lon},${origin}`,
         place: toTitleCase(place.replace(/\s*,\s*/g, ', ')),
         magnitude: mag,
         depth,
